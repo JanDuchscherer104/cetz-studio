@@ -10,11 +10,24 @@ Ubuntu Linux x86_64; Rust/Cargo 1.95.0; Typst 0.14.2; Google Chrome driven by
 Python Playwright 1.63.0. Fletcher 0.5.8 and CeTZ 0.5.2 are pinned in examples
 and the package. All editable test sources are disposable copies.
 
-Local acceptance on 2026-09-19 passed: formatting, Clippy, **42 Rust contract
+Initial scaffold acceptance on 2026-09-19 passed: formatting, Clippy, **42 Rust contract
 tests**, **5 real Typst integration tests**, package positive/negative checks,
 **23 synthetic browser checks**, and **35 native browser checks** with no
 JavaScript errors. The browser receipt is in
 [`verification/native-browser.json`](verification/native-browser.json).
+
+The subsequent workspace/routing integration passed **81 default Rust tests**,
+**10 real Typst tests**, **62 native workspace checks**, and **38 native routing
+checks** locally. The original 35 native browser scenarios still pass. Workspace
+coverage includes raw maths/content edits, rejected input recovery, all gallery
+presets, node/edge deletion, manual corners, quadratic/cubic Bézier controls,
+undo, file switching, and save boundaries. See
+[`verification/workspace-browser.json`](verification/workspace-browser.json).
+
+The integrated project browser, authoring/deletion, and native routing changes
+passed hosted Ubuntu and macOS checks before merging. Manual-curve and showcase
+PRs run the same matrix; use the commit-specific workflow results below for their
+final status. These records describe executed tests, not universal editability.
 
 ## Acceptance commands
 
@@ -27,6 +40,8 @@ JavaScript errors. The browser receipt is in
 | `sh tests/package_compile.sh` | Standalone CeTZ/Fletcher package examples and valid/invalid parameter/style declarations |
 | `python3 tests/browser_smoke.py --chromium /path/to/chrome` | 23 production-UI checks against synthetic geometry; not native evidence |
 | `python3 tests/native_browser.py --binary target/debug/cetz-studio --chromium /path/to/chrome` | 35 real browser/server/compiler checks |
+| `python3 tests/workspace_browser.py --binary target/debug/cetz-studio` | Project switching, graph/content authoring, deletion, manual routes |
+| `python3 tests/routing_browser.py --binary target/debug/cetz-studio` | Proposed routes, fixed geometry, source fidelity, stale/conflict refusal |
 
 Run `cargo build --locked` before browser checks so the embedded UI matches the
 source. Run `python3 scripts/build_ui_preview.py` before the synthetic fixture
@@ -59,7 +74,9 @@ These observations do not establish a full-corpus editing success rate.
 
 - The save check and atomic rename cannot exclude a non-cooperating concurrent
   writer in their final interval. Source dependencies are not locked.
-- Persistent compiler reuse and asynchronous compilation are not implemented.
-- General generated-object dragging, structural graph editing, and arbitrary
-  expressions are not supported; declared controls are the explicit edit seam.
+- Persistent compiler reuse and general asynchronous compilation are not
+  implemented. Routing proposals run in one bounded background worker.
+- Generated-object overrides, arbitrary CeTZ canvas insertion, and deleting the
+  final graph node are not supported. Declared controls remain the edit seam for
+  generated drawings; recognized content arguments have a direct Typst editor.
 - GitHub publication does not mean the Typst package is published on Universe.
