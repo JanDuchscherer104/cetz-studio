@@ -136,6 +136,9 @@ jobs:
           path: .ci/routing
           if-no-files-found: ignore
 
+      - name: Verify project navigation and graph authoring
+        run: python tests/workspace_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
+
       - name: Compile Typst package examples
         if: hashFiles('typst/**/examples/*.typ') != ''
         shell: bash

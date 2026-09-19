@@ -26,6 +26,44 @@ Open **http://127.0.0.1:3847**. Use that exact address rather than `localhost`.
 The first compilation can download pinned Typst packages; if needed, add
 `--compile-timeout 120`. `Ctrl+C` stops the process.
 
+For a diagram with editable text, node duplication, edge creation, and the
+primitive gallery, open `examples/studio-workspace.typ` instead.
+
+## Browse and author
+
+The **Project** sidebar browses Typst files under the selected folder. Enter a
+folder path and choose **Open**, expand directories, or filter by filename.
+**Check** compiles visible unchecked files one at a time. Badges distinguish
+layout editing, declared controls, preview-only sources, unchecked files, and
+compiler errors. An import helper need not be a standalone figure; a diagnostic
+is not a blanket statement that the file is incompatible with Typst.
+
+Switching away from a dirty draft offers **Save and continue**, **Discard draft**,
+or **Cancel**. Only Save writes the source. Refresh discovers added files and
+resets compatibility checks; compilation results are observations, not a watch
+service for changes to imported files, fonts, or assets.
+
+For a recognized graph with verified geometry:
+
+- Select a node or edge to edit its Typst content expression, including maths
+  and composed markup. A plain-text shortcut safely encodes literal text;
+  it stays disabled for rich content. Studio cards expose title and body separately.
+- **Duplicate**, or **Copy node** followed by **Paste node**, creates an offset
+  copy with a fresh name. Its style and content are retained. Copy/paste stays
+  within the current diagram and does not copy attached edges.
+- **+ Edge** connects two named nodes with an optional label and arrow direction.
+- **+ Node** opens a gallery of Fletcher rectangles, ellipses, and diamonds, plus
+  Studio nodes and cards. Available presets depend on the file's existing imports.
+- **Delete node** removes a node, with confirmation before removing attached
+  connections. **Delete connection** removes one edge. Both support undo.
+  Nodes with unresolved references and the final node remain protected.
+
+These commands compile before being adopted and participate in undo/redo.
+The gallery inserts into supported Fletcher diagrams; arbitrary CeTZ canvas
+insertion and cross-file node copying are not implemented.
+
+## Other figures
+
 For the original literal-node and routed-edge demo:
 
 ```sh
