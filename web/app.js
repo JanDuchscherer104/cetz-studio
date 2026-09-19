@@ -457,7 +457,7 @@
   document.addEventListener('keydown',e=>{
     if(e.key==='Tab'&&!$('modal-backdrop').hidden){
       const modal=[...$('modal-backdrop').querySelectorAll('.modal')].find(item=>!item.hidden),focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
-      if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
+      if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(!modal.contains(document.activeElement)){e.preventDefault();(e.shiftKey?last:first).focus();}else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
     }
     if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
