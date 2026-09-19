@@ -8,6 +8,33 @@ use cetz_studio::{
 use std::fs;
 use tempfile::tempdir;
 
+#[test]
+fn computed_and_named_edge_vertices_block_node_deletion() {
+    for edge in ["edge(vertices: (<a>, <b>))", "edge(<a>, ..route)"] {
+        let source = format!(
+            "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <b>), {edge})"
+        );
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(diagram.opaque_references);
+        assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    }
+}
+
+#[test]
+fn destructured_import_alias_is_not_an_insertion_capability() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let (studio,) = (none,)\n#diagram(node((0mm, 0mm), [A], name: <a>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+}
+
+#[test]
+fn attachment_counts_resolve_dotted_names_once_per_edge() {
+    let source = "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <a.b>), edge(<a.b.east>, <a.b>), edge(<a>, <a.b.west>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    assert_eq!(diagram.nodes[1].attached_edges, 2);
+}
+
 const SOURCE: &str = "// αβ Unicode before source spans\n#graph(\n n(1.00, -2, <a>, [Keep *this* and $x_i$]),\n n(30, 20, <b>, [Keep #box[all, nested] content]),\n edge(<a>, (15mm, 2mm), (15mm, -20mm), <b.west>, \"-|>\", [$f_i$], label-pos: (1, .5)),\n)\n";
 
 #[test]
