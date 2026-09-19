@@ -132,11 +132,15 @@ def main() -> None:
                     state = click_revision(page, '#apply-node-title-source')
                     check('[$x^3$ and *composed text*]' in state['source'], 'Raw content editing accepts equations and composed Typst')
                     valid_source = state['source']
+                    errors_before = len(errors)
                     page.locator('#node-title-source').fill('[#unknown-function()]')
                     page.locator('#apply-node-title-source').click()
                     wait_idle(page)
                     check(browser_snapshot(page)['source'] == valid_source, 'Failed content compilation preserves the valid draft')
                     check(page.locator('#node-title-source').input_value() == '[#unknown-function()]', 'Failed content input is retained for correction')
+                    expected_console = 'workspace console: Failed to load resource: the server responded with a status of 409 (Conflict)'
+                    check(errors[errors_before:] == [expected_console], 'Invalid content produces only the expected rejected-request console message')
+                    del errors[errors_before:]
                     page.locator('#edges-tab').click()
                     page.locator('[data-element="e0"]').click()
                     page.locator('#edge-label-source').fill('[$y = x^2$]')
