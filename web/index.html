@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cetz Studio</title>
   <link rel="stylesheet" href="/style.css">
+  <script defer src="/routing.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
@@ -11,10 +12,15 @@
   <div class="brand"><span class="brand-mark">C</span><strong>Cetz Studio</strong><span class="tag">0.1 PREVIEW</span></div>
   <div class="header-actions"><span id="session-mode" class="quiet">LOCAL · RUST + TYPST</span><button id="download" class="subtle">Export draft</button><button id="save" class="primary" disabled>Save source <kbd>⌘ S</kbd></button></div>
 </header>
-<div class="filebar"><span class="file-icon">◇</span><strong id="filename">Opening figure…</strong><span id="dirty" class="pill">Connecting</span><span class="filebar-spacer"></span><span>Typst source · Layout and declared style controls</span></div>
+<div class="filebar"><span class="file-icon">◇</span><strong id="filename">Opening figure…</strong><span id="dirty" class="pill">Connecting</span><span class="filebar-spacer"></span><span>Typst source · Content, layout, and declared controls</span></div>
 <div id="fixture-banner" hidden>INTERACTIVE UI FIXTURE · Browser interactions only. Rust and Typst are not running in this preview. Saving is disabled.</div>
 <main>
   <aside class="left">
+    <div class="section-title project-heading">PROJECT <button id="refresh-project" class="icon-button" title="Refresh project files">↻</button></div>
+    <div class="project-root-row"><input id="project-root" placeholder="Folder path" aria-label="Project folder path" autocomplete="off"><button id="open-project" title="Open folder">Open</button></div>
+    <div class="project-tools"><input id="project-filter" placeholder="Filter .typ files…" aria-label="Filter project files" autocomplete="off"><button id="check-project" title="Check visible files">Check</button></div>
+    <div id="project-files" class="project-files"><p class="project-empty">This server does not expose a project yet.</p></div>
+    <div class="sidebar-divider"></div>
     <div class="section-title">ELEMENTS <span id="element-count"></span></div>
     <input id="search" placeholder="Find a node or connection…" aria-label="Find element" autocomplete="off">
     <div class="list-tabs"><button id="nodes-tab" class="active">Nodes <span id="node-count"></span></button><button id="edges-tab">Edges <span id="edge-count"></span></button><button id="parameters-tab">Controls <span id="parameter-count"></span></button></div>
@@ -24,6 +30,7 @@
   <section class="workspace">
     <div class="toolbar">
       <div class="toolbar-group"><button id="undo" title="Undo · Ctrl/Cmd+Z" disabled>↶</button><button id="redo" title="Redo · Ctrl/Cmd+Shift+Z" disabled>↷</button></div>
+      <div class="toolbar-group create-tools"><button id="add-node" title="Insert a supported primitive">＋ Node</button><button id="add-edge" title="Connect two named nodes">＋ Edge</button></div>
       <div class="toolbar-group"><label class="snap"><input id="snap" type="checkbox" checked> Snap</label><select id="grid-step" aria-label="Snap step"><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option></select></div>
       <span class="toolbar-spacer"></span>
       <select id="page-select" aria-label="Preview page" hidden></select>
@@ -43,10 +50,42 @@
   <aside class="right">
     <div class="section-title">INSPECTOR</div>
     <div id="inspector"></div>
-    <div class="guardrail"><div class="guardrail-title">Your source stays yours</div><p>Edit supported layout literals and declared style controls. Equations, data, and generated relationships stay in Typst.</p><p>Fixed waypoints do not follow node drags automatically.</p></div>
+    <section id="routing-panel" class="routing-panel">
+      <h3>Automatic edge routing</h3>
+      <label class="field-label" for="routing-scope">Scope</label>
+      <select id="routing-scope"><option value="selected">Selected edge</option><option value="checked">Checked edges</option><option value="all">All eligible edges</option></select>
+      <div id="routing-choices" hidden></div>
+      <label class="field-label" for="routing-clearance">Clearance (mm)</label>
+      <input id="routing-clearance" type="number" min="0" max="25" step="0.5" value="2">
+      <p id="routing-reason" class="field-note"></p>
+      <button id="routing-preview" class="fullwidth" disabled>Preview routes</button>
+      <div class="routing-actions"><button id="routing-apply" disabled>Apply proposal</button><button id="routing-discard" disabled>Discard</button></div>
+      <p id="routing-status" class="field-note" role="status">Opening routing controls…</p>
+    </section>
+    <div class="guardrail"><div class="guardrail-title">Your source stays yours</div><p>Edit selected Typst content, supported layout literals, and declared controls. Every change compiles before it becomes a draft; only Save writes the file.</p><p>Fixed waypoints do not follow node drags automatically.</p></div>
   </aside>
 </main>
 <footer><span id="status">Opening source…</span><span class="quiet">Undo is session-local · Save validates the clean source and retains a backup</span></footer>
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <section id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-title" hidden>
+    <div class="modal-head"><div><span class="selection-type">PRIMITIVE GALLERY</span><h2 id="gallery-title">Add a node</h2></div><button class="modal-close" aria-label="Close">×</button></div>
+    <p class="modal-note">Insert at the centre of the current view. Available for recognized Fletcher diagrams.</p>
+    <div id="primitive-gallery" class="primitive-gallery"></div>
+  </section>
+  <section id="edge-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edge-title" hidden>
+    <div class="modal-head"><div><span class="selection-type">CONNECTION</span><h2 id="edge-title">Add an edge</h2></div><button class="modal-close" aria-label="Close">×</button></div>
+    <label class="field-label" for="edge-from">From</label><select id="edge-from"></select>
+    <label class="field-label" for="edge-to">To</label><select id="edge-to"></select>
+    <label class="field-label" for="new-edge-label">Label (optional)</label><input id="new-edge-label" autocomplete="off">
+    <label class="field-label" for="edge-arrow">Arrow</label><select id="edge-arrow"><option value="forward">Forward</option><option value="none">None</option><option value="backward">Backward</option><option value="both">Both</option></select>
+    <button id="create-edge" class="primary fullwidth">Add edge</button>
+  </section>
+  <section id="dirty-modal" class="modal compact" role="dialog" aria-modal="true" aria-labelledby="dirty-title" hidden>
+    <div class="modal-head"><div><span class="selection-type">UNSAVED DRAFT</span><h2 id="dirty-title">Keep your changes?</h2></div></div>
+    <p class="modal-note">The current file has changes that have not been written to disk.</p>
+    <div class="modal-actions"><button id="dirty-cancel">Cancel</button><button id="dirty-discard" class="danger">Discard draft</button><button id="dirty-save" class="primary">Save and continue</button></div>
+  </section>
+</div>
 <div id="toast" role="alert" hidden></div>
 </body>
 </html>

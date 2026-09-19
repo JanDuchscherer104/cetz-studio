@@ -57,6 +57,64 @@ printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>two</t
 
 #[cfg(unix)]
 #[test]
+fn preview_storage_uses_source_volume_and_cleans_up() {
+    let root = tempdir().unwrap();
+    let path = root.path().join("figure.typ");
+    fs::write(&path, "A preview").unwrap();
+    let executable = fake_typst(
+        root.path(),
+        r#"
+test "$(dirname "$input")" = "$(dirname "$(dirname "$output")")" || exit 23
+printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>' > "$(page 1)"
+"#,
+    );
+    let mut session = Session::open(path, compiler(root.path().into(), executable), None).unwrap();
+    session.render().unwrap();
+    assert!(session.snapshot().preview_current);
+    let entries = fs::read_dir(root.path()).unwrap().count();
+    assert_eq!(
+        entries, 2,
+        "Only the original source and fake compiler remain"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn silent_compiler_failure_reports_exit_status() {
+    let root = tempdir().unwrap();
+    let path = root.path().join("figure.typ");
+    fs::write(&path, "A preview").unwrap();
+    let executable = fake_typst(root.path(), "exit 7");
+    let mut session = Session::open(path, compiler(root.path().into(), executable), None).unwrap();
+    let error = session.render().unwrap_err().to_string();
+    assert!(error.contains("exit status: 7"), "{error}");
+    assert!(error.contains("no readable diagnostics"), "{error}");
+    assert!(!session.snapshot().preview_current);
+}
+
+#[cfg(unix)]
+#[test]
+fn compiler_logs_are_drained_with_bounded_diagnostics() {
+    let root = tempdir().unwrap();
+    let path = root.path().join("figure.typ");
+    fs::write(&path, "A preview").unwrap();
+    let executable = fake_typst(root.path(), "dd if=/dev/zero bs=1024 count=256 2>/dev/null\n{ dd if=/dev/zero bs=1024 count=256 2>/dev/null; } >&2\nexit 8");
+    let mut session = Session::open(path, compiler(root.path().into(), executable), None).unwrap();
+    let error = session.render().unwrap_err().to_string();
+    assert!(
+        error.contains("exit status: 8"),
+        "Expected compiler exit status"
+    );
+    assert!(error.len() < 129 * 1024, "Diagnostics must be bounded");
+    assert!(
+        error.len() >= 128 * 1024,
+        "Retain the bounded diagnostic prefix"
+    );
+    assert_eq!(fs::read_dir(root.path()).unwrap().count(), 2);
+}
+
+#[cfg(unix)]
+#[test]
 fn instrumentation_failure_falls_back_to_clean_render() {
     let root = tempdir().unwrap();
     let path = root.path().join("figure.typ");

@@ -319,3 +319,47 @@ fn actual_all_gallery_presets_compile_inside_fletcher_diagram() {
     assert!(snapshot.source.contains("trailing comment is preserved"));
     assert_eq!(fs::read_to_string(file.path()).unwrap(), source);
 }
+
+#[test]
+#[ignore = "Requires installed Typst and cached Fletcher 0.5.8 package"]
+fn actual_cascade_delete_is_one_compiled_undo_step() {
+    use std::io::Write;
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut file = tempfile::Builder::new()
+        .prefix(".delete-")
+        .suffix(".typ")
+        .tempfile_in(&root)
+        .unwrap();
+    let source = r#"#import "@preview/fletcher:0.5.8" as f
+#set page(width: auto, height: auto, margin: 4mm)
+#f.diagram(
+  f.node((0mm, 0mm), [Delete], name: <delete>), // preserve this comment
+  f.node((20mm, 0mm), [Keep], name: <keep>),
+  f.edge(<delete>, <keep>, "->", [attached]),
+  debug: false,
+)
+"#;
+    file.write_all(source.as_bytes()).unwrap();
+    file.flush().unwrap();
+    let mut session = Session::open(file.path().into(), compiler(root), None).unwrap();
+    session.render().unwrap();
+    session
+        .edit(
+            0,
+            Command::DeleteNode {
+                id: "delete".into(),
+                cascade: true,
+            },
+        )
+        .unwrap();
+    let deleted = session.snapshot();
+    assert_eq!(deleted.diagram.as_ref().unwrap().nodes.len(), 1);
+    assert!(deleted.diagram.as_ref().unwrap().edges.is_empty());
+    assert!(deleted.source.contains("preserve this comment"));
+    assert!(deleted.source.contains("debug: false"));
+    assert!(!deleted.source.contains("<delete>"));
+    session.history(1, false).unwrap();
+    assert_eq!(session.snapshot().source, source);
+    assert_eq!(fs::read_to_string(file.path()).unwrap(), source);
+}

@@ -31,3 +31,15 @@ Fletcher `0.5.8` Typst package. Typst, Fletcher, and their transitive package
 dependencies retain their upstream copyright, license, and notice files. This
 file records provenance; it does not replace notices distributed by those
 projects or packages.
+
+## Optional Rust edge routing
+
+`pathfinding` 4.15.0 is dual MIT / Apache-2.0 and is used under MIT.
+Upstream author metadata names Samuel Tardieu. The published crate and inspected
+v4.15.0 tree contain the SPDX declaration in Cargo.toml but no standalone
+LICENSE-MIT file. The selected MIT terms and attribution are retained in
+`docs/licenses/pathfinding-MIT.txt`; upstream source and metadata: https://github.com/evenfurther/pathfinding/tree/v4.15.0.
+
+The crate is statically linked into the Rust service. Cargo.lock records its
+transitive dependencies, which retain their own package license terms. No
+libavoid, libavoid-js, or ELK implementation is copied or distributed here.

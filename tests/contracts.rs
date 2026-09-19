@@ -8,6 +8,33 @@ use cetz_studio::{
 use std::fs;
 use tempfile::tempdir;
 
+#[test]
+fn computed_and_named_edge_vertices_block_node_deletion() {
+    for edge in ["edge(vertices: (<a>, <b>))", "edge(<a>, ..route)"] {
+        let source = format!(
+            "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <b>), {edge})"
+        );
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(diagram.opaque_references);
+        assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    }
+}
+
+#[test]
+fn destructured_import_alias_is_not_an_insertion_capability() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let (studio,) = (none,)\n#diagram(node((0mm, 0mm), [A], name: <a>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+}
+
+#[test]
+fn attachment_counts_resolve_dotted_names_once_per_edge() {
+    let source = "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <a.b>), edge(<a.b.east>, <a.b>), edge(<a>, <a.b.west>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    assert_eq!(diagram.nodes[1].attached_edges, 2);
+}
+
 const SOURCE: &str = "// αβ Unicode before source spans\n#graph(\n n(1.00, -2, <a>, [Keep *this* and $x_i$]),\n n(30, 20, <b>, [Keep #box[all, nested] content]),\n edge(<a>, (15mm, 2mm), (15mm, -20mm), <b.west>, \"-|>\", [$f_i$], label-pos: (1, .5)),\n)\n";
 
 #[test]
@@ -710,6 +737,86 @@ fn gallery_requires_a_unique_unshadowed_import_alias() {
         .as_deref()
         .unwrap()
         .contains("explicit"));
+}
+
+#[test]
+fn delete_edge_preserves_nodes_named_options_and_comments() {
+    let source = "#graph(\n n(1, 2, <a>, [A]),\n n(3, 4, <b>, [B]),\n edge(<a>, <b>, \"->\"), // edge explanation\n debug: false,\n)";
+    let diagram = model::parse(source, None).unwrap();
+    let changed =
+        edit::apply(source, &diagram, &Command::DeleteEdge { edge: "e0".into() }).unwrap();
+    assert!(changed.contains("// edge explanation"));
+    assert!(changed.contains("debug: false"));
+    let reparsed = model::parse(&changed, None).unwrap();
+    assert_eq!(reparsed.nodes.len(), 2);
+    assert!(reparsed.edges.is_empty());
+}
+
+#[test]
+fn delete_node_requires_explicit_cascade_and_removes_attached_edges_once() {
+    let source = "#graph(\n n(1, 2, <a>, [A]), // node explanation\n n(3, 4, <b>, [B]),\n edge(<a.east>, <b>, \"->\"),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    let error = edit::apply(
+        source,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: false,
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("cascade: true"));
+
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("// node explanation"));
+    assert!(changed.contains("<b>"));
+    assert!(!changed.contains("<a>"));
+    let reparsed = model::parse(&changed, None).unwrap();
+    assert_eq!(reparsed.nodes.len(), 1);
+    assert!(reparsed.edges.is_empty());
+}
+
+#[test]
+fn node_deletion_refuses_opaque_references_and_the_final_node() {
+    let opaque = "#graph(n(1, 2, <a>, [A]), n(3, 4, <b>, [B]), if true { edge(<a>, <b>, \"->\") })";
+    let diagram = model::parse(opaque, None).unwrap();
+    assert!(diagram.opaque_references);
+    assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    let error = edit::apply(
+        opaque,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("may reference"));
+
+    let single = "#graph(n(1, 2, <a>, [A]))";
+    let diagram = model::parse(single, None).unwrap();
+    assert_eq!(
+        diagram.nodes[0].delete_reason.as_deref().unwrap(),
+        "The final recognized node cannot be deleted because the editor requires a non-empty graph"
+    );
+    assert!(edit::apply(
+        single,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .is_err());
 }
 
 #[test]
