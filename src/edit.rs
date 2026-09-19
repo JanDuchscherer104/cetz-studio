@@ -7,6 +7,12 @@ use serde_json::Value;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    /// Server-owned, measured proposal. HTTP clients cannot inject a route.
+    #[serde(skip_deserializing)]
+    ApplyRoutes {
+        routes: Vec<crate::routing::Route>,
+        geometry: crate::routing::Geometry,
+    },
     MoveNode {
         id: String,
         x: f64,
@@ -439,6 +445,9 @@ fn endpoint(name: &str, diagram: &Diagram) -> Option<String> {
 pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<String> {
     let mut patches = Vec::new();
     match command {
+        Command::ApplyRoutes { routes, .. } => {
+            return crate::routing::patch_routes(source, diagram, routes)
+        }
         Command::MoveNode { id, x, y } => {
             let n = diagram
                 .nodes

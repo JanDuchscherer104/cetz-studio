@@ -10,6 +10,7 @@
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null};
+  const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
   const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -153,7 +154,7 @@
   }
   function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
   function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
-  function select(kind,id){app.selection={kind,id};renderList();renderInspector();drawOverlay();}
+  function select(kind,id){app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();}
   function startDrag(e,kind,payload){
     if(app.busy||e.button!==0||!app.basis)return;
     e.preventDefault();e.stopPropagation();
@@ -174,6 +175,7 @@
       const r=el('rect',{x:b.x-2,y:b.y-2,width:b.w+4,height:b.h+4,rx:3,class:`node-hit${selected?' selected':''}${nodeEditable(n)?'':' locked'}`,'data-node':n.id});
       r.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('node',n.id);if(nodeEditable(n))startDrag(ev,'node',{node:n,box:b});});overlay.append(r);
     }
+    routing?.draw(overlay);
     if(app.selection?.kind==='edge'){
       const e=d.edges.find(e=>e.id===app.selection.id),points=e&&app.edgePoints.get(e.id);if(!points)return;
       overlay.append(el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'route-guide','stroke-width':1.1/z}));
@@ -425,7 +427,7 @@
     $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
-    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();drawOverlay();
+    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();routing?.refresh();drawOverlay();
     $('add-node').disabled=app.busy||!insertionAvailable();$('add-node').title=diagram().insertion_reason||'Insert a supported primitive';$('add-edge').disabled=app.busy||!structuralEdits()||diagram().nodes.length<2;
   }
   async function post(path,body={},options={}){

@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cetz Studio</title>
   <link rel="stylesheet" href="/style.css">
+  <script defer src="/routing.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
@@ -49,6 +50,18 @@
   <aside class="right">
     <div class="section-title">INSPECTOR</div>
     <div id="inspector"></div>
+    <section id="routing-panel" class="routing-panel">
+      <h3>Automatic edge routing</h3>
+      <label class="field-label" for="routing-scope">Scope</label>
+      <select id="routing-scope"><option value="selected">Selected edge</option><option value="checked">Checked edges</option><option value="all">All eligible edges</option></select>
+      <div id="routing-choices" hidden></div>
+      <label class="field-label" for="routing-clearance">Clearance (mm)</label>
+      <input id="routing-clearance" type="number" min="0" max="25" step="0.5" value="2">
+      <p id="routing-reason" class="field-note"></p>
+      <button id="routing-preview" class="fullwidth" disabled>Preview routes</button>
+      <div class="routing-actions"><button id="routing-apply" disabled>Apply proposal</button><button id="routing-discard" disabled>Discard</button></div>
+      <p id="routing-status" class="field-note" role="status">Opening routing controls…</p>
+    </section>
     <div class="guardrail"><div class="guardrail-title">Your source stays yours</div><p>Edit selected Typst content, supported layout literals, and declared controls. Every change compiles before it becomes a draft; only Save writes the file.</p><p>Fixed waypoints do not follow node drags automatically.</p></div>
   </aside>
 </main>

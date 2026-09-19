@@ -118,6 +118,24 @@ jobs:
       - name: Verify native browser round trips
         run: python tests/native_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
 
+      - name: Verify native obstacle-routing browser workflow
+        run: python tests/routing_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output-dir .ci/routing
+
+      - name: Record release deployment size
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cetz-studio-target
+        run: |
+          cargo build --release --locked
+          python -c "from pathlib import Path; print('Native release bytes:', Path('${{ runner.temp }}/cetz-studio-target/release/cetz-studio').stat().st_size)"
+
+      - name: Retain routing screenshots and latency observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: routing-${{ matrix.os }}
+          path: .ci/routing
+          if-no-files-found: ignore
+
       - name: Verify project navigation and graph authoring
         run: python tests/workspace_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
 

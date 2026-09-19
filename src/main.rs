@@ -3,6 +3,7 @@ use cetz_studio::{
     edit, model,
     project::{relative_key, require_clean, Project, ProjectSnapshot},
     render::Compiler,
+    routing,
     session::{canonical_figure, Session},
 };
 use clap::Parser;
@@ -91,14 +92,57 @@ struct OpenRootRequest {
     discard: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RouteRequest {
+    session_id: u64,
+    revision: u64,
+    edges: Vec<String>,
+    clearance_mm: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RouteAdoption {
+    session_id: u64,
+    revision: u64,
+    proposal_id: String,
+}
+
 struct AppState {
     project: Project,
     session: Session,
     session_id: u64,
     scale: Option<f64>,
+    routing: routing::jobs::Jobs,
 }
 
 impl AppState {
+    fn routing_identity(&self) -> routing::jobs::Identity {
+        routing::jobs::Identity {
+            session_id: self.session_id,
+            revision: self.session.revision,
+            source_hash: cetz_studio::session::hash(self.session.snapshot().source.as_bytes()),
+        }
+    }
+
+    fn routing_status(&mut self) -> Value {
+        let snapshot = self.session.snapshot();
+        let disk_error = self.session.check_disk().err().map(|e| format!("{e:#}"));
+        if disk_error.is_some() {
+            self.routing.discard();
+        }
+        let identity = self.routing_identity();
+        let eligible = snapshot
+            .diagram
+            .as_ref()
+            .map(|d| routing::eligibility_list(&snapshot.source, d))
+            .unwrap_or_default();
+        json!({"identity": identity, "routing": self.routing.status(&identity),
+            "eligibility": eligible, "available": snapshot.capabilities.graph_gestures && disk_error.is_none(),
+            "error": disk_error})
+    }
+
     fn project_snapshot(&self) -> ProjectSnapshot {
         self.project
             .snapshot(&self.session.path, self.session.snapshot().dirty)
@@ -222,12 +266,62 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
             Ok(value)
         }
         (&Method::Get, "/api/project") => Ok(state.json()),
+        (&Method::Get, "/api/routing/status") => Ok(state.routing_status()),
         (&Method::Post, path) => {
             ensure!(
                 header(request, "X-Cetz-Studio-Token") == Some(token),
                 "Missing or invalid session token"
             );
             match path {
+                "/api/routing/propose" => {
+                    let r: RouteRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    state.session.check_revision(r.revision)?;
+                    state.session.check_disk()?;
+                    let snapshot = state.session.snapshot();
+                    ensure!(snapshot.capabilities.graph_gestures,
+                        "Automatic routing needs a current instrumented single-page Fletcher preview");
+                    state.routing.start(routing::jobs::Work {
+                        identity: state.routing_identity(),
+                        path: state.session.path.clone(),
+                        source: snapshot.source,
+                        diagram: snapshot.diagram.context("No editable graph")?,
+                        compiler: state.session.compiler.clone(),
+                        edges: r.edges,
+                        options: routing::Options {
+                            clearance_mm: r.clearance_mm,
+                        },
+                    })?;
+                    return Ok(state.routing_status());
+                }
+                "/api/routing/discard" => {
+                    let r: Revision = json_body(request)?;
+                    ensure!(
+                        r.session_id.is_some(),
+                        "Routing commands require a file session identity"
+                    );
+                    state.check_identity(r.session_id)?;
+                    state.session.check_revision(r.revision)?;
+                    state.routing.discard();
+                    return Ok(state.routing_status());
+                }
+                "/api/routing/apply" => {
+                    let r: RouteAdoption = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    state.session.check_revision(r.revision)?;
+                    state.session.check_disk()?;
+                    let proposal = state
+                        .routing
+                        .proposal(&state.routing_identity(), &r.proposal_id)?;
+                    state.session.edit(
+                        r.revision,
+                        edit::Command::ApplyRoutes {
+                            routes: proposal.plan.routes,
+                            geometry: proposal.geometry,
+                        },
+                    )?;
+                    state.routing.discard();
+                }
                 "/api/edit" => {
                     let r: EditRequest = json_body(request)?;
                     state.check_identity(r.session_id)?;
@@ -340,6 +434,7 @@ fn main() -> Result<()> {
         session,
         session_id: 1,
         scale: args.y_scale,
+        routing: routing::jobs::Jobs::default(),
     };
     let host = format!("127.0.0.1:{}", args.port);
     let origin = format!("http://{host}");
@@ -370,6 +465,10 @@ fn main() -> Result<()> {
             (&Method::Get, "/app.js") => Some((
                 "text/javascript; charset=utf-8",
                 include_str!("../web/app.js"),
+            )),
+            (&Method::Get, "/routing.js") => Some((
+                "text/javascript; charset=utf-8",
+                include_str!("../web/routing.js"),
             )),
             (&Method::Get, "/style.css") => {
                 Some(("text/css; charset=utf-8", include_str!("../web/style.css")))
