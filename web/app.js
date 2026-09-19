@@ -9,7 +9,7 @@
     nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
-    project:null, sessionId:null, copiedNode:null, pendingProjectAction:null};
+    project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null};
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
   const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -19,6 +19,7 @@
   const parameters = () => app.snapshot?.parameters || [];
   const graphGestures = () => app.snapshot?.capabilities?.graph_gestures ?? !!app.snapshot?.diagram;
   const structuralEdits = () => graphGestures() && !!app.snapshot?.preview_current && !app.mappingError;
+  const insertionAvailable = () => structuralEdits() && (app.fixture||!!diagram().insert_primitives?.length);
   function notify(message, error=false) {
     $('status').textContent=message;
     if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
@@ -56,7 +57,7 @@
       const badge=capabilityBadge(file),button=html('button',`project-file${file.path===app.project?.active_file?' active':''}`);
       button.dataset.projectFile=file.path;button.title=`${file.path} · ${badge.title}`;
       button.append(html('span','project-file-name',file.name+(file.dirty?' •':'')),html('span',`file-badge ${badge.kind}`,badge.text));
-      button.onclick=()=>requestProjectAction({path:'/api/project/open',body:{path:file.path},label:`Open ${file.name}`});container.append(button);
+      button.onclick=()=>{if(file.path===app.project?.active_file){notify(`${file.name} is already open.`);return;}requestProjectAction({path:'/api/project/open',body:{path:file.path},label:`Open ${file.name}`});};container.append(button);
     }
   }
   function renderProject(){
@@ -279,11 +280,11 @@
     root.append(html('label','field-label',kind==='node'?'Text content':'Edge text'));
     for(const field of fields){
       const wrap=html('div','text-field'),label=html('label',null,field.id[0].toUpperCase()+field.id.slice(1)),input=html('textarea');
-      input.id=`${kind}-${field.id}-text`;input.value=field.value??'';input.disabled=app.busy||!field.editable;label.htmlFor=input.id;
+      input.id=`${kind}-${field.id}-text`;input.value=field.value??'';input.disabled=app.busy||!field.editable||!structuralEdits();label.htmlFor=input.id;
       const apply=html('button','fullwidth','Apply text');apply.id=`apply-${kind}-${field.id}`;apply.disabled=input.disabled;
       apply.onclick=()=>post('/api/edit',{command:kind==='node'?{kind:'set_node_text',id:item.id,field:field.id,text:input.value}:{kind:'set_edge_text',edge:item.id,field:field.id,text:input.value}});
       wrap.append(label,input,apply);
-      if(field.reason)wrap.append(html('p','read-only-reason',field.reason));
+      const reason=field.reason||(!structuralEdits()?'Editing needs a verified graph preview. This source remains viewable.':null);if(reason)wrap.append(html('p','read-only-reason',reason));
       root.append(wrap);
     }
   }
@@ -320,24 +321,27 @@
         const v=end==='start'?item.vertices[0]:item.vertices.at(-1),row=html('div','property-row'),selectEl=html('select');
         for(const p of ['auto','north','south','east','west','north-east','north-west','south-east','south-west']){const o=html('option',null,p);o.value=p;selectEl.append(o);}
         const resolved=v?.kind==='anchor'?d.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0]:null;
-        const port=resolved?v.name.slice(resolved.id.length).replace(/^\./,''):'auto';selectEl.value=port||'auto';selectEl.disabled=!resolved||!item.editable||app.busy;
+        const port=resolved?v.name.slice(resolved.id.length).replace(/^\./,''):'auto';selectEl.value=port||'auto';selectEl.disabled=!resolved||!item.editable||!structuralEdits()||app.busy;
         selectEl.addEventListener('change',()=>post('/api/edit',{command:{kind:'set_port',edge:item.id,end,port:selectEl.value}}));row.append(html('span',null,end==='start'?'From':'To'),selectEl);root.append(row);
       }
       root.append(html('p','field-note','Green circles move literal waypoints. Small squares move orthogonal segments whose ends are both literal points. Amber moves the existing label.'));
       if(item.has_label){
         root.append(html('label','field-label','Label placement'));
         const pos=item.label_position||[0,.5],row=html('div','coordinate-row');row.append(inputNumber('label-segment',pos[0],'Segment (0-based)'),inputNumber('label-fraction',pos[1],'Fraction'));root.append(row);$('label-segment').step='1';$('label-fraction').step='.05';
-        const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
+        const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||!structuralEdits()||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
       }
     }
   }
   function showModal(id){
+    if($('modal-backdrop').hidden)app.modalTrigger=document.activeElement;
     $('modal-backdrop').hidden=false;
     for(const modal of $('modal-backdrop').querySelectorAll('.modal'))modal.hidden=modal.id!==id;
     $('modal-backdrop').querySelector(`#${id} button:not(:disabled),#${id} input:not(:disabled),#${id} select:not(:disabled)`)?.focus();
   }
   function closeModal(){
+    if(!$('dirty-modal').hidden)app.pendingProjectAction=null;
     $('modal-backdrop').hidden=true;for(const modal of $('modal-backdrop').querySelectorAll('.modal'))modal.hidden=true;
+    const trigger=app.modalTrigger;app.modalTrigger=null;if(trigger?.isConnected)trigger.focus();
   }
   async function duplicateNode(id){
     const before=new Set(diagram().nodes.map(n=>n.id)),data=await post('/api/edit',{command:{kind:'duplicate_node',id}});
@@ -349,7 +353,9 @@
     try{return pointerWorld({clientX:box.left+box.width/2,clientY:box.top+box.height/2});}catch{return {x:50,y:50};}
   }
   function openGallery(){
-    if(!structuralEdits()){notify('Node insertion needs a recognized, current Fletcher diagram.',true);return;}
+    const supported=new Set(diagram().insert_primitives||(app.fixture?primitives.map(([id])=>id):[]));
+    for(const button of $('primitive-gallery').querySelectorAll('[data-primitive]')){button.disabled=!supported.has(button.dataset.primitive);button.title=button.disabled?(diagram().insertion_reason||'This primitive is unavailable for the current source.'):'';}
+    if(!structuralEdits()||!supported.size){notify(diagram().insertion_reason||'Node insertion needs a recognized, current Fletcher diagram.',true);return;}
     showModal('gallery-modal');
   }
   function openEdgeCreator(){
@@ -365,8 +371,8 @@
   async function checkVisibleFiles(){
     if(!app.project)return;
     const query=$('project-filter').value.trim().toLowerCase(),files=app.project.files.filter(f=>f.status==='unchecked'&&(!query||f.path.toLowerCase().includes(query)));
-    for(const file of files){const data=await post('/api/project/check',{path:file.path},{message:`Checked ${file.name}`,quiet:true});if(!data)break;}
-    notify(files.length?`Compatibility checked for ${files.length} file${files.length===1?'':'s'}.`:'No unchecked files in this view.');
+    let completed=0;for(const file of files){const data=await post('/api/project/check',{path:file.path},{message:`Checked ${file.name}`,quiet:true});if(!data)break;completed++;}
+    if(!files.length)notify('No unchecked files in this view.');else if(completed===files.length)notify(`Compatibility checked for ${completed} file${completed===1?'':'s'}.`);
   }
   function refresh(snapshot){
     app.snapshot=snapshot;$('filename').textContent=snapshot.filename;$('dirty').textContent=snapshot.dirty?'Unsaved layout':'Source unchanged';$('dirty').className=`pill${snapshot.dirty?' modified':''}`;
@@ -393,7 +399,7 @@
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
     $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();drawOverlay();
-    $('add-node').disabled=app.busy||!structuralEdits();$('add-edge').disabled=app.busy||!structuralEdits()||diagram().nodes.length<2;
+    $('add-node').disabled=app.busy||!insertionAvailable();$('add-node').title=diagram().insertion_reason||'Insert a supported primitive';$('add-edge').disabled=app.busy||!structuralEdits()||diagram().nodes.length<2;
   }
   async function post(path,body={},options={}){
     if(app.busy)return;
@@ -432,7 +438,12 @@
   $('create-edge').onclick=async()=>{const from=$('edge-from').value,to=$('edge-to').value;if(from===to){notify('Choose two different nodes.',true);return;}closeModal();await post('/api/edit',{command:{kind:'add_edge',from,to,label:$('new-edge-label').value.trim()||null,arrow:$('edge-arrow').value}});};
   $('dirty-cancel').onclick=()=>{app.pendingProjectAction=null;closeModal();};
   $('dirty-discard').onclick=()=>{const action=app.pendingProjectAction;app.pendingProjectAction=null;if(action)requestProjectAction({...action,body:{...action.body,discard:true}});};
-  $('dirty-save').onclick=async()=>{const action=app.pendingProjectAction;const saved=await post('/api/save');if(saved&&action){app.pendingProjectAction=null;await requestProjectAction(action);}else if(!saved)showModal('dirty-modal');};
+  $('dirty-save').onclick=async()=>{
+    const action=app.pendingProjectAction,buttons=['dirty-save','dirty-discard','dirty-cancel'].map($);buttons.forEach(button=>button.disabled=true);
+    const saved=await post('/api/save');buttons.forEach(button=>button.disabled=false);
+    if(saved&&action&&app.pendingProjectAction===action){app.pendingProjectAction=null;await requestProjectAction(action);}
+    else if(!saved&&app.pendingProjectAction===action)showModal('dirty-modal');
+  };
   $('project-filter').addEventListener('input',renderProject);$('check-project').onclick=checkVisibleFiles;
   $('refresh-project').onclick=()=>{if(app.fixture)renderProject();else post('/api/project/refresh',{}, {message:'Project files refreshed.'});};
   $('open-project').onclick=()=>{const path=$('project-root').value.trim();if(path)requestProjectAction({path:'/api/project/root',body:{path},label:'Project opened'});};
@@ -444,6 +455,10 @@
   for(const tab of ['diff','diagnostics'])$(`${tab}-tab`).onclick=()=>{$('diff').hidden=tab!=='diff';$('diagnostics').hidden=tab!=='diagnostics';$('diff-tab').classList.toggle('active',tab==='diff');$('diagnostics-tab').classList.toggle('active',tab==='diagnostics');};
   $('download').onclick=()=>{if(!app.snapshot)return;const u=URL.createObjectURL(new Blob([app.snapshot.source],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=app.snapshot.filename.replace(/\.typ$/,'.draft.typ');a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
   document.addEventListener('keydown',e=>{
+    if(e.key==='Tab'&&!$('modal-backdrop').hidden){
+      const modal=[...$('modal-backdrop').querySelectorAll('.modal')].find(item=>!item.hidden),focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
+      if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
+    }
     if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const redo=e.shiftKey;if(!$(redo?'redo':'undo').disabled)post(redo?'/api/redo':'/api/undo');return;}
