@@ -61,6 +61,9 @@ struct Revision {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProjectPath {
+    #[serde(default)]
+    session_id: Option<u64>,
+    revision: u64,
     path: String,
 }
 
@@ -251,6 +254,8 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
                 }
                 "/api/project/check" => {
                     let r: ProjectPath = json_body(request)?;
+                    state.check_identity(r.session_id)?;
+                    state.session.check_revision(r.revision)?;
                     let mut compiler = state.session.compiler.clone();
                     compiler.root = state.project.root().to_path_buf();
                     let file = state.project.check(&r.path, compiler, state.scale)?;
