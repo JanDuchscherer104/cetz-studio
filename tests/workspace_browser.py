@@ -256,6 +256,12 @@ def main() -> None:
                     state = wait_revision(page, before['revision'])
                     check(state['diagram']['edges'][0]['route'] == 'bezier' and state['preview_current'], 'Bézier mode renders native curves with draggable controls')
                     check(page.locator('[data-waypoint]').count() == 2, 'Cubic Bézier exposes two control handles')
+                    check(page.evaluate("""() => {
+                        const curve=document.querySelector('[data-edge="e0"]');
+                        const node=document.querySelector('[data-node="alpha"]').getBBox();
+                        const start=curve.getPointAtLength(0);
+                        return Math.hypot(start.x-node.x-node.width/2,start.y-node.y-node.height/2)>1;
+                    }"""), 'Bézier selection path uses the clipped outline anchor, not the node center')
                     state = click_revision(page, '[data-remove-waypoint="2"]')
                     check(len(state['diagram']['edges'][0]['vertices']) == 3, 'Removing a control converts cubic to quadratic Bézier')
                     state = click_revision(page, '#insert-waypoint')

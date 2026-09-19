@@ -115,9 +115,15 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
     e
   }})
   __cetz_studio_f.cetz.canvas({{
-    for edge in decorated.filter(edge => edge.kind == "bezier") {{
-      let attachments = __cetz_studio_f.find-nodes-for-edge(grid, nodes, edge)
-      __cetz_studio_draw_bezier(__cetz_studio_f, edge, attachments, debug: options.debug)
+    for (i, edge) in decorated.enumerate() {{
+      if edge.kind == "bezier" {{
+        let attachments = __cetz_studio_f.find-nodes-for-edge(grid, nodes, edge)
+        __cetz_studio_draw_bezier(__cetz_studio_f, edge, attachments, debug: options.debug,
+          on-anchors: anchors => {{
+            __cetz_studio_box(anchors.first(), (.02pt, .02pt), "a2" + __cetz_studio_hex(i*256))
+            __cetz_studio_box(anchors.last(), (.02pt, .02pt), "a2" + __cetz_studio_hex(i*256+edge.final-vertices.len()-1))
+          }})
+      }}
     }}
     __cetz_studio_f.draw-diagram(grid, nodes, decorated.filter(edge => edge.kind != "bezier"), debug: options.debug)
     // Floating fiducials do not change the canvas bounds. Browser removes them.
@@ -148,7 +154,9 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
       }}
       if e.final-vertices.len() == counts.at(i) {{
         for (j, p) in e.final-vertices.enumerate() {{
-          __cetz_studio_box(p, (.02pt, .02pt), "a2" + __cetz_studio_hex(i*256+j))
+          if e.kind != "bezier" or (j > 0 and j < e.final-vertices.len()-1) {{
+            __cetz_studio_box(p, (.02pt, .02pt), "a2" + __cetz_studio_hex(i*256+j))
+          }}
         }}
       }}
     }}
