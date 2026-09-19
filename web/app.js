@@ -331,6 +331,14 @@
       copy.onclick=()=>{app.copiedNode=item.id;notify(`${item.id} copied. Paste duplicates it in this diagram.`);renderInspector();};
       paste.onclick=()=>duplicateNode(app.copiedNode);duplicate.onclick=()=>duplicateNode(item.id);actions.append(copy,paste,duplicate);root.append(actions);
       if(app.copiedNode===item.id)root.append(html('p','field-note','Copied internally · Ctrl/Cmd+V duplicates this node.'));
+      const remove=html('button','fullwidth','Delete node');remove.id='delete-node';
+      remove.disabled=app.busy||!structuralEdits()||!item.deletable;
+      remove.onclick=()=>{
+        const count=item.attached_edges||0;
+        if(count&&!window.confirm(`Delete ${item.id} and its ${count} attached connection${count===1?'':'s'}? You can undo this change.`))return;
+        post('/api/edit',{command:{kind:'delete_node',id:item.id,cascade:count>0}});
+      };
+      root.append(remove);if(item.delete_reason)root.append(html('p','read-only-reason',item.delete_reason));
     }else{
       renderTextFields(root,item,'edge');
       root.append(html('p','inspector-hint',edgeName(item)),html('label','field-label','Attachment ports'));
@@ -347,6 +355,8 @@
         const pos=item.label_position||[0,.5],row=html('div','coordinate-row');row.append(inputNumber('label-segment',pos[0],'Segment (0-based)'),inputNumber('label-fraction',pos[1],'Fraction'));root.append(row);$('label-segment').step='1';$('label-fraction').step='.05';
         const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||!structuralEdits()||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
       }
+      const remove=html('button','fullwidth','Delete connection');remove.id='delete-edge';remove.disabled=app.busy||!structuralEdits();
+      remove.onclick=()=>post('/api/edit',{command:{kind:'delete_edge',edge:item.id}});root.append(remove);
     }
   }
   function showModal(id){
