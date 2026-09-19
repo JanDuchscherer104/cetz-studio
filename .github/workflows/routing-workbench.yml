@@ -1,4 +1,4 @@
-# Temporary exact-source transfer for this task branch only; removed by its own commit.
+# Temporary exact-source transfer for this task branch only; removed after delivery.
 name: Routing workbench
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
         with:
           toolchain: 1.89.0
           components: rustfmt, clippy
-      - name: Materialize the exact locally tested patch
+      - name: Materialize the exact locally tested source patch
         shell: bash
         run: |
           set -euo pipefail
@@ -33,8 +33,8 @@ jobs:
           web/app.js web/index.html web/routing.js web/style.css
           '''.split())
           parts = [Path(f'.github/routing-transfer/part-{i}').read_bytes() for i in range(6)]
-          # Repair one identified transport transcription byte, then require the
-          # exact original whole-payload checksum before interpreting any content.
+          # Correct the identified transcription byte, then require the original
+          # whole-payload checksum before interpreting any content.
           assert parts[4][445:446] == b'4'
           parts[4] = parts[4][:445] + b'7' + parts[4][446:]
           data = base64.b64decode(b''.join(parts), validate=True)
@@ -53,6 +53,7 @@ jobs:
                   b = p.read_bytes()
                   actual = hashlib.sha1(f'blob {len(b)}\0'.encode() + b).hexdigest()
                   assert actual == expected, f'Base changed: {name}: {actual}'
+          original_ci = Path('.github/workflows/ci.yml').read_bytes()
           patch = Path(os.environ['RUNNER_TEMP']) / 'routing-verified.patch'
           patch.write_text(payload['patch'])
           subprocess.run(['git', 'apply', '--check', str(patch)], check=True)
@@ -62,10 +63,15 @@ jobs:
           changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
           changed.update(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines())
           assert changed == allowed, f'Unexpected source delta: {changed ^ allowed}'
+          # This runner has contents permission only. Workflow edits are delivered
+          # separately through the user's authorized GitHub connection.
+          Path('.github/workflows/ci.yml').write_bytes(original_ci)
+          allowed.remove('.github/workflows/ci.yml')
           shutil.rmtree('.github/routing-transfer')
-          Path('.github/workflows/routing-workbench.yml').unlink()
           subprocess.run(['git', 'diff', '--check'], check=True)
-          subprocess.run(['git', 'add', '--', *sorted(allowed), '.github/routing-transfer', '.github/workflows/routing-workbench.yml'], check=True)
+          subprocess.run(['git', 'add', '--', *sorted(allowed), '.github/routing-transfer'], check=True)
+          staged = subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines()
+          assert not any(p.startswith('.github/workflows/') for p in staged)
           PY
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -87,3 +93,4 @@ jobs:
           test "$remote" = "$GITHUB_SHA"
           git push origin HEAD:refs/heads/codex/issue-5-obstacle-routing
           echo "Implementation commit: $(git rev-parse HEAD)"
+          echo "Implementation tree: $(git rev-parse HEAD^{tree})"
