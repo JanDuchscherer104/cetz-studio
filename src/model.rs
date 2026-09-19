@@ -567,26 +567,22 @@ fn import_aliases(root: &SyntaxNode, source: &str) -> HashMap<String, String> {
             aliases.insert(alias, path);
         }
     }
-    fn collect_bindings(
-        node: &SyntaxNode,
-        offset: usize,
-        source: &str,
-        names: &mut HashSet<String>,
-    ) {
-        if node.kind() == K::LetBinding {
-            if let Some((_, name_span)) = children(node, offset)
-                .iter()
-                .find(|(part, _)| part.kind() == K::Ident)
-            {
-                names.insert(source[name_span.clone()].to_string());
-            }
+    fn collect_bindings(node: &SyntaxNode, names: &mut HashSet<String>) {
+        if let Some(binding) = node.cast::<typst_syntax::ast::LetBinding>() {
+            names.extend(
+                binding
+                    .kind()
+                    .bindings()
+                    .into_iter()
+                    .map(|id| id.get().to_string()),
+            );
         }
-        for (child, span) in children(node, offset) {
-            collect_bindings(child, span.start, source, names);
+        for child in node.children() {
+            collect_bindings(child, names);
         }
     }
     let mut bindings = HashSet::new();
-    collect_bindings(root, 0, source, &mut bindings);
+    collect_bindings(root, &mut bindings);
     aliases.retain(|alias, _| !bindings.contains(alias));
     aliases
 }
@@ -716,6 +712,12 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                     break;
                 }
             }
+            // The unparsed tail may contain generated vertices rather than a
+            // label. Such references cannot safely participate in deletion.
+            opaque_references |= call.named("vertices").is_some()
+                || p[vertices.len()..]
+                    .iter()
+                    .any(|arg| !matches!(arg.kind, K::Str | K::ContentBlock));
             let editable = vertices.len() >= 2
                 && [
                     "bend",
@@ -850,22 +852,41 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         });
     }
     ensure!(!nodes.is_empty(), "No named nodes recognized");
+    ensure!(
+        nodes.len() < 4096 && edges.len() < 256 && edges.iter().all(|e| e.vertices.len() < 256),
+        "Diagram exceeds prototype limits"
+    );
     let only_node = nodes.len() == 1;
-    let node_ids = nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>();
-    for node in &mut nodes {
-        node.attached_edges = edges
-            .iter()
-            .filter(|edge| {
-                edge.vertices.iter().any(|vertex| match vertex {
-                    Vertex::Anchor { name, .. } => node_ids
-                        .iter()
-                        .filter(|id| name == *id || name.starts_with(&format!("{id}.")))
-                        .max_by_key(|id| id.len())
-                        .is_some_and(|id| id == &node.id),
-                    Vertex::Point { .. } => false,
-                })
-            })
-            .count();
+    let node_ids: HashMap<&str, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.id.as_str(), i))
+        .collect();
+    let mut attached = vec![0usize; nodes.len()];
+    for edge in &edges {
+        let mut seen = HashSet::new();
+        for vertex in &edge.vertices {
+            if let Vertex::Anchor { name, .. } = vertex {
+                let mut candidate = name.as_str();
+                loop {
+                    if let Some(&index) = node_ids.get(candidate) {
+                        seen.insert(index);
+                        break;
+                    }
+                    let Some((prefix, _)) = candidate.rsplit_once('.') else {
+                        break;
+                    };
+                    candidate = prefix;
+                }
+            }
+        }
+        for index in seen {
+            attached[index] += 1;
+        }
+    }
+    drop(node_ids);
+    for (node, count) in nodes.iter_mut().zip(attached) {
+        node.attached_edges = count;
         node.delete_reason = if only_node {
             Some("The final recognized node cannot be deleted because the editor requires a non-empty graph".into())
         } else if opaque_references {
@@ -875,10 +896,6 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         };
         node.deletable = node.delete_reason.is_none();
     }
-    ensure!(
-        nodes.len() < 4096 && edges.len() < 256 && edges.iter().all(|e| e.vertices.len() < 256),
-        "Diagram exceeds prototype limits"
-    );
     if edges
         .iter()
         .any(|e| matches!(e.vertices.first(), Some(Vertex::Point { .. })))
