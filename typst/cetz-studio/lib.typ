@@ -205,6 +205,16 @@
     assert("kind" not in options,
       message: "Bezier route owns Fletcher's edge kind")
     options.insert("kind", "bezier")
+    // Fletcher counts control vertices as polyline segments. A Bezier curve
+    // has one continuous parameter domain, so keep the label on segment zero.
+    let position = options.at("label-pos", default: 50%)
+    if type(position) == array {
+      assert(position.first() == 0,
+        message: "Bezier label positions use segment zero")
+    } else {
+      position = (0, position)
+    }
+    options.insert("label-pos", position)
   }
   fletcher.edge(..args.pos(), ..((
     label-side: center,
