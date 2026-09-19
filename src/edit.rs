@@ -696,6 +696,10 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
         } => {
             bounded(*delta)?;
             let e = edge(diagram, id)?;
+            ensure!(
+                e.route != EdgeRoute::Bezier,
+                "Move Bezier controls individually"
+            );
             let right = segment.checked_add(1).context("Invalid segment")?;
             let (a, b) = match (e.vertices.get(*segment), e.vertices.get(right)) {
                 (Some(Vertex::Point { point: a, .. }), Some(Vertex::Point { point: b, .. })) => (a, b),
@@ -760,6 +764,10 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
             fraction,
         } => {
             let e = edge(diagram, id)?;
+            ensure!(
+                e.route != EdgeRoute::Bezier || *segment == 0,
+                "Bezier labels use segment zero"
+            );
             ensure!(e.has_label, "Edge has no label to move");
             ensure!(
                 *segment < e.vertices.len().saturating_sub(1),

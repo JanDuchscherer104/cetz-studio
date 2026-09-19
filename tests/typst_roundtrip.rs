@@ -52,6 +52,10 @@ fn actual_bezier_controls_round_trip_and_preserve_source() {
     );
     apply(
         &mut session,
+        serde_json::json!({"kind":"set_label","edge":"e0","segment":0,"fraction":0.5}),
+    );
+    apply(
+        &mut session,
         serde_json::json!({"kind":"insert_waypoint","edge":"e0","segment":1,"x":35,"y":-20}),
     );
     apply(
