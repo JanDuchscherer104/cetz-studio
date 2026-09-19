@@ -8,12 +8,13 @@ use crate::{
 use anyhow::{bail, ensure, Context, Result};
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::mpsc,
     time::Duration,
 };
-use tempfile::{Builder, NamedTempFile};
+use tempfile::Builder;
 use wait_timeout::ChildExt;
 
 pub const MARKER_STROKE: f64 = 0.000_123_45;
@@ -159,13 +160,6 @@ fn typst_point(x: f64, editor_y: f64) -> String {
     format!("({}mm, {}mm)", number(x), number(-editor_y))
 }
 
-fn capped_text(path: &Path, limit: u64) -> Result<String> {
-    use std::io::Read;
-    let mut buf = String::new();
-    fs::File::open(path)?.take(limit).read_to_string(&mut buf)?;
-    Ok(buf)
-}
-
 impl Compiler {
     pub fn render(
         &self,
@@ -206,15 +200,24 @@ impl Compiler {
         let mut temp = Builder::new()
             .prefix(".cetz-studio-")
             .suffix(".typ")
-            .tempfile_in(parent)?;
-        temp.write_all(source.as_bytes())?;
-        temp.flush()?;
-        let output = Builder::new().prefix("cetz-studio-render-").tempdir()?;
+            .tempfile_in(parent)
+            .context("Cannot create a temporary preview source beside the figure")?;
+        temp.write_all(source.as_bytes())
+            .context("Cannot write preview source; check available disk space and quota")?;
+        temp.flush()
+            .context("Cannot flush temporary preview source")?;
+        // The source parent must already be writable for temporary imports.
+        // Keep SVGs and diagnostics there too: a full system temporary volume
+        // must not prevent previewing a figure on a healthy project volume.
+        let output = Builder::new()
+            .prefix(".cetz-studio-render-")
+            .tempdir_in(parent)
+            .context(
+                "Cannot create preview storage beside the figure; check disk space and quota",
+            )?;
         // Typst replaces {p} with one-based page numbers, including for a
         // single-page document. This avoids probing or overwriting page files.
         let svg_path = output.path().join("page-{p}.svg");
-        let stderr = NamedTempFile::new()?;
-        let stdout = NamedTempFile::new()?;
         let mut command = Command::new(&self.executable);
         command
             .arg("compile")
@@ -226,8 +229,8 @@ impl Compiler {
             .arg(&svg_path)
             .current_dir(&self.root)
             .stdin(Stdio::null())
-            .stdout(Stdio::from(stdout.reopen()?))
-            .stderr(Stdio::from(stderr.reopen()?));
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
         for path in &self.font_paths {
             command.arg("--font-path").arg(path);
         }
@@ -237,6 +240,25 @@ impl Compiler {
                 self.executable.display()
             )
         })?;
+        // Drain the pipe continuously so a noisy compiler cannot deadlock on a
+        // full pipe or fill either the system or project volume with logs.
+        let mut stderr = child
+            .stderr
+            .take()
+            .context("Missing compiler diagnostic pipe")?;
+        let (send, receive) = mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let result = (|| -> std::io::Result<String> {
+                let mut captured = Vec::new();
+                stderr
+                    .by_ref()
+                    .take(128 * 1024)
+                    .read_to_end(&mut captured)?;
+                std::io::copy(&mut stderr, &mut std::io::sink())?;
+                Ok(String::from_utf8_lossy(&captured).into_owned())
+            })();
+            let _ = send.send(result);
+        });
         let status = match child.wait_timeout(self.timeout)? {
             Some(status) => status,
             None => {
@@ -248,10 +270,20 @@ impl Compiler {
                 );
             }
         };
-        let diagnostics = capped_text(stderr.path(), 128 * 1024)?;
+        // A misconfigured wrapper could leave a descendant holding the pipe.
+        // Do not wait indefinitely after the compiler itself has exited.
+        let diagnostics = receive
+            .recv_timeout(Duration::from_secs(1))
+            .context("Compiler exited but its diagnostic stream did not close")?
+            .context("Cannot read compiler diagnostics")?;
         ensure!(
             status.success(),
-            "Typst failed; original source is unchanged:\n{diagnostics}"
+            "Typst failed ({status}); original source is unchanged.\n{}",
+            if diagnostics.trim().is_empty() {
+                "The compiler produced no readable diagnostics. Check available disk space, quota, and the Typst executable."
+            } else {
+                &diagnostics
+            }
         );
         let mut paths = fs::read_dir(output.path())?
             .filter_map(|entry| {
