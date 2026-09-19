@@ -45,15 +45,18 @@ service for changes to imported files, fonts, or assets.
 
 For a recognized graph with verified geometry:
 
-- Select a node or edge to edit its literal text in the inspector. Plain text
-  is safely encoded; existing equations, markup, and computed labels stay
-  read-only with an explanation. Studio cards expose title and body separately.
+- Select a node or edge to edit its Typst content expression, including maths
+  and composed markup. A plain-text shortcut safely encodes literal text;
+  it stays disabled for rich content. Studio cards expose title and body separately.
 - **Duplicate**, or **Copy node** followed by **Paste node**, creates an offset
   copy with a fresh name. Its style and content are retained. Copy/paste stays
   within the current diagram and does not copy attached edges.
 - **+ Edge** connects two named nodes with an optional label and arrow direction.
 - **+ Node** opens a gallery of Fletcher rectangles, ellipses, and diamonds, plus
   Studio nodes and cards. Available presets depend on the file's existing imports.
+- **Delete node** removes a node, with confirmation before removing attached
+  connections. **Delete connection** removes one edge. Both support undo.
+  Nodes with unresolved references and the final node remain protected.
 
 These commands compile before being adopted and participate in undo/redo.
 The gallery inserts into supported Fletcher diagrams; arbitrary CeTZ canvas

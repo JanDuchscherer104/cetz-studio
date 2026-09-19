@@ -58,9 +58,10 @@ and explicit parameters. No bulk migration of those sources is performed.
 | Paths | Existing waypoints, ports, label segment/fraction | Proven direct Fletcher literals |
 | Style | Fill, stroke width/color, opacity, text size | Declared values; no automatic inherited-theme rewrites |
 | Generated figures | Radius, spacing, scale, visibility | Declared parameters preserve computed relationships |
-| Text | Literal node titles, card bodies, edge labels | Rich markup, equations, and expressions remain source-owned |
+| Content | Node titles, card bodies, edge labels as Typst expressions | One selected argument, syntax checked and compiled; literal-only plain-text shortcut |
 | Structural edits | Duplicate nodes, add edges, insert gallery presets | Recognized single-page Fletcher graph; existing imports |
-| Future structural editing | Delete objects, route vertices, automatic routing, groups | Not implemented |
+| Deletion | Nodes with explicit attached-edge confirmation; individual edges | Proven references, one undo transaction; final node remains protected |
+| Future structural editing | Route vertices, automatic routing, groups | Not implemented |
 
 Numbers, lengths, hex colors, and booleans provide the initial control interface.
 Enums, gradients, arbitrary rich text, direct shape handles, and angle-specific
