@@ -27,6 +27,10 @@ def main() -> None:
         raise ValueError("Production asset tags changed; update the preview bundler")
     html = html.replace(stylesheet, "<style>" + css + "</style>")
     html = html.replace(script, "")
+    # Routing needs the real compiler/worker endpoints. The standalone fixture
+    # deliberately omits that optional controller and shows no live proposals.
+    html = html.replace('<script defer src="/routing.js"></script>', "")
+    html = html.replace("Opening routing controls…", "Automatic routing requires the native server; unavailable in this fixture.")
     html = html.replace("</body>", "<script>" + payload + "</script><script>" + app + "</script></body>")
     destination = ROOT / "ui-preview.html"
     destination.write_text(html, encoding="utf-8")
