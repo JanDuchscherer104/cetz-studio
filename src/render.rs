@@ -103,6 +103,8 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
   let wanted = ({nodes},)
   let counts = ({vertices}{vertices_comma})
   let expected-edges = ({edge_expectations}{edges_comma})
+  // Extra generated nodes would be invisible to the routing obstacle map.
+  assert(nodes.len() == wanted.len(), message: "Editor cannot map dynamically generated nodes. Use a direct standalone graph.")
   assert(edges.len() == counts.len(), message: "Editor cannot map dynamically generated edges. Use a direct standalone graph.")
   let decorated = edges.enumerate().map(((i, e)) => {{
     let original = e.label-wrapper
