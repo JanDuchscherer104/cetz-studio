@@ -8,6 +8,58 @@ use cetz_studio::{
 use std::fs;
 use tempfile::tempdir;
 
+#[test]
+fn manual_corner_removal_preserves_neighbor_comments_and_route_switch_updates_literal() {
+    let source = "#studio.diagram(studio.node((0mm, 0mm), [A], name: <a>), studio.node((50mm, 0mm), [B], name: <b>), studio.edge(<a>, (10mm, 20mm) /* keep context */, <b>, [label], route: \"polyline\"))";
+    let diagram = model::parse(source, None).unwrap();
+    let remove: Command = serde_json::from_value(
+        serde_json::json!({"kind":"remove_waypoint","edge":"e0","vertex":1}),
+    )
+    .unwrap();
+    let removed = edit::apply(source, &diagram, &remove).unwrap();
+    assert!(removed.contains("/* keep context */"));
+    assert!(removed.contains("[label]"));
+    let switch: Command = serde_json::from_value(
+        serde_json::json!({"kind":"set_edge_route","edge":"e0","route":"bezier"}),
+    )
+    .unwrap();
+    let changed = edit::apply(source, &diagram, &switch).unwrap();
+    assert_eq!(changed.matches("route:").count(), 1);
+    assert!(changed.contains("route: \"bezier\""));
+    let extreme: Command = serde_json::from_value(
+        serde_json::json!({"kind":"insert_waypoint","edge":"e0","segment":usize::MAX,"x":0,"y":0}),
+    )
+    .unwrap();
+    assert!(edit::apply(source, &diagram, &extreme).is_err());
+}
+
+#[test]
+fn computed_and_named_edge_vertices_block_node_deletion() {
+    for edge in ["edge(vertices: (<a>, <b>))", "edge(<a>, ..route)"] {
+        let source = format!(
+            "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <b>), {edge})"
+        );
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(diagram.opaque_references);
+        assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    }
+}
+
+#[test]
+fn destructured_import_alias_is_not_an_insertion_capability() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let (studio,) = (none,)\n#diagram(node((0mm, 0mm), [A], name: <a>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+}
+
+#[test]
+fn attachment_counts_resolve_dotted_names_once_per_edge() {
+    let source = "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <a.b>), edge(<a.b.east>, <a.b>), edge(<a>, <a.b.west>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    assert_eq!(diagram.nodes[1].attached_edges, 2);
+}
+
 const SOURCE: &str = "// αβ Unicode before source spans\n#graph(\n n(1.00, -2, <a>, [Keep *this* and $x_i$]),\n n(30, 20, <b>, [Keep #box[all, nested] content]),\n edge(<a>, (15mm, 2mm), (15mm, -20mm), <b.west>, \"-|>\", [$f_i$], label-pos: (1, .5)),\n)\n";
 
 #[test]
@@ -336,7 +388,7 @@ fn elastic_grid_is_not_mistaken_for_millimetres() {
     )
     .unwrap();
     assert!(d.nodes.iter().all(|n| !n.editable));
-    assert!(matches!(&d.edges[0].vertices[1], Vertex::Point { point } if !point.editable));
+    assert!(matches!(&d.edges[0].vertices[1], Vertex::Point { point, .. } if !point.editable));
 }
 #[test]
 fn custom_routing_is_not_advertised_as_editable() {

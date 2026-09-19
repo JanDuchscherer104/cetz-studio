@@ -16,6 +16,56 @@ fn compiler(root: PathBuf) -> Compiler {
 }
 
 #[test]
+#[ignore = "Requires installed Typst and cached Fletcher/CeTZ packages"]
+fn actual_bezier_controls_round_trip_and_preserve_source() {
+    let root = tempdir().unwrap();
+    let library = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("typst/cetz-studio");
+    for file in ["lib.typ", "bezier.typ"] {
+        fs::copy(library.join(file), root.path().join(file)).unwrap();
+    }
+    let source = "#import \"lib.typ\" as studio\n#set page(width: auto, height: auto)\n#studio.diagram(studio.node((0mm, 0mm), [A], name: <a>), studio.node((50mm, 0mm), [B], name: <b>), studio.edge(<a>, <b>, \"->\", [$x^2$]))";
+    let path = root.path().join("figure.typ");
+    fs::write(&path, source).unwrap();
+    let mut session = Session::open(path.clone(), compiler(root.path().into()), None).unwrap();
+    session.render().unwrap();
+    let apply = |session: &mut Session, command: Value| {
+        let revision = session.snapshot().revision;
+        session
+            .edit(revision, serde_json::from_value(command).unwrap())
+            .unwrap();
+    };
+    apply(
+        &mut session,
+        serde_json::json!({"kind":"set_edge_route","edge":"e0","route":"bezier"}),
+    );
+    assert!(session.snapshot().preview_current);
+    let curved = session.snapshot().source.clone();
+    assert!(curved.contains("route: \"bezier\""));
+    assert!(curved.contains("[$x^2$]"));
+    apply(
+        &mut session,
+        serde_json::json!({"kind":"move_waypoint","edge":"e0","vertex":1,"x":15,"y":20}),
+    );
+    apply(
+        &mut session,
+        serde_json::json!({"kind":"remove_waypoint","edge":"e0","vertex":2}),
+    );
+    apply(
+        &mut session,
+        serde_json::json!({"kind":"insert_waypoint","edge":"e0","segment":1,"x":35,"y":-20}),
+    );
+    apply(
+        &mut session,
+        serde_json::json!({"kind":"set_edge_route","edge":"e0","route":"polyline"}),
+    );
+    assert!(!session.snapshot().source.contains("route:"));
+    assert_eq!(fs::read_to_string(path).unwrap(), source);
+    let revision = session.snapshot().revision;
+    session.history(revision, false).unwrap();
+    assert!(session.snapshot().source.contains("route: \"bezier\""));
+}
+
+#[test]
 #[ignore = "Requires installed Typst and the real Fletcher 0.5.8 package"]
 fn actual_compiler_instrumentation_preserves_canvas_bounds() {
     let root = tempdir().unwrap();

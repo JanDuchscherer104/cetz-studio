@@ -42,6 +42,9 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
         !source.contains("__cetz_studio_"),
         "Source uses a reserved prototype identifier"
     );
+    let bezier = include_str!("../typst/cetz-studio/bezier.typ")
+        .replace("draw-edge", "__cetz_studio_draw_bezier")
+        .replace("point(", "__cetz_studio_bezier_point(");
     let nodes = diagram
         .nodes
         .iter()
@@ -71,7 +74,7 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
                 .vertices
                 .iter()
                 .map(|vertex| match vertex {
-                    Vertex::Point { point } if point.editable => typst_point(point.x, point.y),
+                    Vertex::Point { point, .. } if point.editable => typst_point(point.x, point.y),
                     _ => "none".into(),
                 })
                 .collect::<Vec<_>>()
@@ -100,6 +103,7 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
 #let __cetz_studio_close(actual, expected) = {{
   (calc.abs(actual.at(0) - expected.at(0)) <= 0.001mm) and (calc.abs(actual.at(1) - expected.at(1)) <= 0.001mm)
 }}
+{bezier}
 #let __cetz_studio_render(grid, nodes, edges, options) = {{
   let wanted = ({nodes},)
   let counts = ({vertices}{vertices_comma})
@@ -111,7 +115,11 @@ pub fn instrument(source: &str, diagram: &Diagram) -> Result<String> {
     e
   }})
   __cetz_studio_f.cetz.canvas({{
-    __cetz_studio_f.draw-diagram(grid, nodes, decorated, debug: options.debug)
+    for edge in decorated.filter(edge => edge.kind == "bezier") {{
+      let attachments = __cetz_studio_f.find-nodes-for-edge(grid, nodes, edge)
+      __cetz_studio_draw_bezier(__cetz_studio_f, edge, attachments, debug: options.debug)
+    }}
+    __cetz_studio_f.draw-diagram(grid, nodes, decorated.filter(edge => edge.kind != "bezier"), debug: options.debug)
     // Floating fiducials do not change the canvas bounds. Browser removes them.
     __cetz_studio_box((0pt, 0pt), (.02pt, .02pt), "a00000")
     __cetz_studio_box((10mm, 0pt), (.02pt, .02pt), "a00001")

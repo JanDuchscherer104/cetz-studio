@@ -10,6 +10,7 @@
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null};
+  const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
   const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -153,7 +154,7 @@
   }
   function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
   function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
-  function select(kind,id){app.selection={kind,id};renderList();renderInspector();drawOverlay();}
+  function select(kind,id){app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();}
   function startDrag(e,kind,payload){
     if(app.busy||e.button!==0||!app.basis)return;
     e.preventDefault();e.stopPropagation();
@@ -165,7 +166,8 @@
     const d=diagram(),z=app.zoom;
     for(const e of d.edges){
       const points=app.edgePoints.get(e.id);if(!points)continue;
-      const hit=el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'edge-hit','stroke-width':10/z,'data-edge':e.id});
+      const curve=e.route==='bezier'&&[3,4].includes(points.length);
+      const hit=curve?el('path',{d:`M ${points[0].x},${points[0].y} ${points.length===3?'Q':'C'} ${points.slice(1).map(p=>`${p.x},${p.y}`).join(' ')}`,class:'edge-hit','stroke-width':10/z,'data-edge':e.id}):el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'edge-hit','stroke-width':10/z,'data-edge':e.id});
       hit.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('edge',e.id);});overlay.append(hit);
     }
     for(const n of d.nodes){
@@ -174,6 +176,7 @@
       const r=el('rect',{x:b.x-2,y:b.y-2,width:b.w+4,height:b.h+4,rx:3,class:`node-hit${selected?' selected':''}${nodeEditable(n)?'':' locked'}`,'data-node':n.id});
       r.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('node',n.id);if(nodeEditable(n))startDrag(ev,'node',{node:n,box:b});});overlay.append(r);
     }
+    routing?.draw(overlay);
     if(app.selection?.kind==='edge'){
       const e=d.edges.find(e=>e.id===app.selection.id),points=e&&app.edgePoints.get(e.id);if(!points)return;
       overlay.append(el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'route-guide','stroke-width':1.1/z}));
@@ -183,6 +186,7 @@
         h.addEventListener('pointerdown',ev=>startDrag(ev,'waypoint',{edge:e,vertex:j,point:e.vertices[j].point}));overlay.append(h);
       });
       points.slice(0,-1).forEach((p,j)=>{
+        if(e.route==='bezier')return;
         if(!vertexEditable(e,j)||!vertexEditable(e,j+1))return;
         const a=e.vertices[j].point,b=e.vertices[j+1].point;
         const vertical=Math.abs(a.x-b.x)<1e-6,horizontal=Math.abs(a.y-b.y)<1e-6;
@@ -196,7 +200,7 @@
         h.addEventListener('pointerdown',ev=>startDrag(ev,'segment',{edge:e,segment:j,vertical,points:[p,q]}));overlay.append(h);
       });
       const label=app.labelRects.get(e.id);
-      if(label&&e.editable&&e.has_label){
+      if(label&&e.editable&&e.has_label&&e.route!=='bezier'){
         const p=center(label),h=el('circle',{cx:p.x,cy:p.y,r:5/z,class:'label-handle','data-label':e.id});
         h.addEventListener('pointerdown',ev=>startDrag(ev,'label',{edge:e,box:label}));overlay.append(h);
       }
@@ -341,6 +345,7 @@
       root.append(remove);if(item.delete_reason)root.append(html('p','read-only-reason',item.delete_reason));
     }else{
       renderTextFields(root,item,'edge');
+      renderManualRoute(root,item);
       root.append(html('p','inspector-hint',edgeName(item)),html('label','field-label','Attachment ports'));
       for(const end of ['start','end']){
         const v=end==='start'?item.vertices[0]:item.vertices.at(-1),row=html('div','property-row'),selectEl=html('select');
@@ -352,12 +357,36 @@
       root.append(html('p','field-note','Green circles move literal waypoints. Small squares move orthogonal segments whose ends are both literal points. Amber moves the existing label.'));
       if(item.has_label){
         root.append(html('label','field-label','Label placement'));
-        const pos=item.label_position||[0,.5],row=html('div','coordinate-row');row.append(inputNumber('label-segment',pos[0],'Segment (0-based)'),inputNumber('label-fraction',pos[1],'Fraction'));root.append(row);$('label-segment').step='1';$('label-fraction').step='.05';
+        const pos=item.label_position||[0,.5],row=html('div','coordinate-row');row.append(inputNumber('label-segment',pos[0],'Segment (0-based)'),inputNumber('label-fraction',pos[1],'Fraction'));root.append(row);$('label-segment').step='1';$('label-fraction').step='.05';if(item.route==='bezier'){$('label-segment').value=0;$('label-segment').disabled=true;}
         const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||!structuralEdits()||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
       }
       const remove=html('button','fullwidth','Delete connection');remove.id='delete-edge';remove.disabled=app.busy||!structuralEdits();
       remove.onclick=()=>post('/api/edit',{command:{kind:'delete_edge',edge:item.id}});root.append(remove);
     }
+  }
+  function renderManualRoute(root,edge){
+    if(edge.route===undefined)return;
+    root.append(html('label','field-label','Path mode'));
+    const mode=html('select');mode.id='edge-route';
+    for(const [value,label] of [['polyline','Corners / polyline'],['bezier','Bézier controls']]){const option=html('option',null,label);option.value=value;mode.append(option);}
+    mode.value=edge.route;mode.disabled=app.busy||!structuralEdits()||!edge.route_editable;
+    mode.onchange=()=>post('/api/edit',{command:{kind:'set_edge_route',edge:edge.id,route:mode.value}});root.append(mode);
+    if(edge.route_reason)root.append(html('p','read-only-reason',edge.route_reason));
+    const bezier=edge.route==='bezier';root.append(html('label','field-label',bezier?'Control points':'Corners'));
+    edge.vertices.forEach((vertex,index)=>{
+      if(index===0||index===edge.vertices.length-1||vertex.kind!=='point')return;
+      const row=html('div','property-row'),remove=html('button',null,'Remove');remove.dataset.removeWaypoint=String(index);
+      remove.disabled=app.busy||!structuralEdits()||!edge.waypoint_editable||!vertex.point.editable||(bezier&&edge.vertices.length<=3);
+      remove.onclick=()=>post('/api/edit',{command:{kind:'remove_waypoint',edge:edge.id,vertex:index}});
+      row.append(html('span',null,`${bezier?'Control':'Corner'} ${index} · ${vertex.point.x.toFixed(1)}, ${vertex.point.y.toFixed(1)} mm`),remove);root.append(row);
+    });
+    const segment=html('select');segment.id='insert-segment';
+    for(let i=0;i<edge.vertices.length-1;i++){const option=html('option',null,`Insert on segment ${i}`);option.value=String(i);segment.append(option);}
+    const add=html('button','fullwidth',bezier?'Add control point':'Add corner');add.id='insert-waypoint';
+    add.disabled=app.busy||!structuralEdits()||!edge.waypoint_editable||(bezier&&edge.vertices.length>=4);segment.disabled=add.disabled;
+    add.onclick=()=>{const i=Number(segment.value),points=app.edgePoints.get(edge.id);if(!points?.[i+1])return;const a=svgToWorld(points[i]),b=svgToWorld(points[i+1]);post('/api/edit',{command:{kind:'insert_waypoint',edge:edge.id,segment:i,x:(a.x+b.x)/2,y:(a.y+b.y)/2}});};
+    root.append(segment,add,html('p','field-note',bezier?'Drag the control handles to shape the curve. Use label fraction below for placement.':'Add a corner at a segment midpoint, then drag its handle.'));
+    if(edge.waypoint_reason)root.append(html('p','read-only-reason',edge.waypoint_reason));
   }
   function showModal(id){
     if($('modal-backdrop').hidden)app.modalTrigger=document.activeElement;
@@ -425,7 +454,7 @@
     $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
-    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();drawOverlay();
+    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();routing?.refresh();drawOverlay();
     $('add-node').disabled=app.busy||!insertionAvailable();$('add-node').title=diagram().insertion_reason||'Insert a supported primitive';$('add-edge').disabled=app.busy||!structuralEdits()||diagram().nodes.length<2;
   }
   async function post(path,body={},options={}){

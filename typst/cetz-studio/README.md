@@ -113,7 +113,18 @@ useful. Direct options win over theme defaults.
   placed in `node` or an upstream Fletcher node.
 - `card(pos, title, body: ..., ...)` combines `card-content` and `node`.
 - `edge(..args)` supplies a compact label wrapper and forwards Fletcher edge
-  endpoints, waypoints, marks, and named options.
+  endpoints, waypoints, marks, and named options. Set `route: "bezier"` to
+  interpret one or two interior literal points as native Bezier control points.
+  Studio preserves Fletcher endpoint snapping, labels, marks, strokes, layers,
+  and post-processing. Extruded strokes, crossing masks, and path decorations
+  remain read-only for Bezier routes.
+
+The editor can insert, move, and remove literal interior points on direct
+Fletcher and Studio edge calls. For a Studio Bezier edge those points are
+control points; a Bezier edge must retain one or two. Switching an eligible
+two-endpoint `studio.edge` to Bezier creates two controls at one-third and
+two-thirds of the source endpoint positions. Switching back retains them as
+polyline corners, so the operation never discards authored geometry.
 
 Literal tuple coordinates and literal waypoints are the best editing surface.
 Computed coordinates, grid equations, custom render callbacks, dynamic node
