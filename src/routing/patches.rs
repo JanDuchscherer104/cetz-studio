@@ -41,7 +41,7 @@ pub fn eligibility(source: &str, diagram: &Diagram, edge: &Edge) -> Result<()> {
     ensure!(
         edge.vertices[1..edge.vertices.len() - 1]
             .iter()
-            .all(|v| matches!(v, Vertex::Point { point } if point.editable)),
+            .all(|v| matches!(v, Vertex::Point { point, .. } if point.editable)),
         "Computed, elastic, or intermediate named vertices are read-only"
     );
     // This is intentionally stricter than manual movement. A new routing path

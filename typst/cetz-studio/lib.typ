@@ -121,11 +121,29 @@
 
 /// Fletcher diagram with Studio defaults. Positional arguments and all named
 /// Fletcher options pass through; explicit options override the theme.
+#import "bezier.typ" as bezier
+
+#let _draw-diagram(grid, nodes, edges, options) = fletcher.cetz.canvas({
+  for edge in edges.filter(edge => edge.kind == "bezier") {
+    let attachments = fletcher.find-nodes-for-edge(grid, nodes, edge)
+    bezier.draw-edge(fletcher, edge, attachments, debug: options.debug)
+  }
+  fletcher.draw-diagram(
+    grid,
+    nodes,
+    edges.filter(edge => edge.kind != "bezier"),
+    debug: options.debug,
+  )
+})
+
 #let diagram(..args) = {
   let selected = args.named().at("theme", default: default-theme)
   let options = args.named()
   if "theme" in options {
     let _ = options.remove("theme")
+  }
+  if "render" not in options {
+    options.insert("render", _draw-diagram)
   }
   fletcher.diagram(..args.pos(), ..((
     edge-stroke: selected.edge-stroke,
@@ -176,6 +194,27 @@
   let options = args.named()
   if "theme" in options {
     let _ = options.remove("theme")
+  }
+  let route = options.at("route", default: "polyline")
+  if "route" in options {
+    let _ = options.remove("route")
+  }
+  assert(route in ("polyline", "bezier"),
+    message: "edge route must be \"polyline\" or \"bezier\"")
+  if route == "bezier" {
+    assert("kind" not in options,
+      message: "Bezier route owns Fletcher's edge kind")
+    options.insert("kind", "bezier")
+    // Fletcher counts control vertices as polyline segments. A Bezier curve
+    // has one continuous parameter domain, so keep the label on segment zero.
+    let position = options.at("label-pos", default: 50%)
+    if type(position) == array {
+      assert(position.first() == 0,
+        message: "Bezier label positions use segment zero")
+    } else {
+      position = (0, position)
+    }
+    options.insert("label-pos", position)
   }
   fletcher.edge(..args.pos(), ..((
     label-side: center,

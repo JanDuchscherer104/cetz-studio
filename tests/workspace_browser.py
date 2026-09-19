@@ -34,6 +34,7 @@ def prepare_workspace(root: Path) -> Path:
   f.edge(<alpha>, <beta>, "-|>", [Flow]),
 )
 ''', encoding='utf-8')
+    (root / 'figures/curves.typ').write_text(figure.read_text(encoding='utf-8').replace('#f.diagram(', '#studio.diagram(').replace('f.edge(', 'studio.edge('), encoding='utf-8')
     (root / 'figures/preview.typ').write_text('A plain Typst document', encoding='utf-8')
     (root / 'figures/broken.typ').write_text('#unknown-function()', encoding='utf-8')
     (root / 'figures/helper.typ').write_text('#let helper(x) = x', encoding='utf-8')
@@ -147,6 +148,15 @@ def main() -> None:
                     state = click_revision(page, '#apply-edge-label-source')
                     check('label: [$y = x^2$]' in state['source'], 'Raw edge labels accept math without changing arrow syntax')
 
+                    corners_before = state['source']
+                    state = click_revision(page, '#insert-waypoint')
+                    check(len(state['diagram']['edges'][0]['vertices']) == 3, 'Add corner inserts a literal point in a Fletcher edge')
+                    state = click_revision(page, '[data-remove-waypoint="1"]')
+                    check(len(state['diagram']['edges'][0]['vertices']) == 2, 'Remove corner retains named endpoints')
+                    click_revision(page, '#undo')
+                    state = click_revision(page, '#undo')
+                    check(state['source'] == corners_before, 'Manual corner edits undo to exact source bytes')
+
                     page.locator('#nodes-tab').click()
                     page.locator('[data-element="alpha"]').click()
                     before = browser_snapshot(page)
@@ -236,6 +246,33 @@ def main() -> None:
                     page.locator('#refresh-project').click()
                     page.locator('[data-project-file="figures/new-file.typ"]').wait_for()
                     check(page.locator('[data-project-file="figures/new-file.typ"] .file-badge').inner_text() == 'Unchecked', 'Refresh discovers a new file without claiming it was compiled')
+                    page.locator('[data-project-file="figures/curves.typ"]').click()
+                    wait_condition(page, "document.querySelector('#filename').textContent === 'curves.typ'")
+                    wait_idle(page)
+                    page.locator('#edges-tab').click()
+                    page.locator('[data-element="e0"]').click()
+                    before = browser_snapshot(page)
+                    page.locator('#edge-route').select_option('bezier')
+                    state = wait_revision(page, before['revision'])
+                    check(state['diagram']['edges'][0]['route'] == 'bezier' and state['preview_current'], 'Bézier mode renders native curves with draggable controls')
+                    check(page.locator('[data-waypoint]').count() == 2, 'Cubic Bézier exposes two control handles')
+                    check(page.evaluate("""() => {
+                        const curve=document.querySelector('[data-edge="e0"]');
+                        const node=document.querySelector('[data-node="alpha"]').getBBox();
+                        const start=curve.getPointAtLength(0);
+                        return Math.hypot(start.x-node.x-node.width/2,start.y-node.y-node.height/2)>1;
+                    }"""), 'Bézier selection path uses the clipped outline anchor, not the node center')
+                    state = click_revision(page, '[data-remove-waypoint="2"]')
+                    check(len(state['diagram']['edges'][0]['vertices']) == 3, 'Removing a control converts cubic to quadratic Bézier')
+                    state = click_revision(page, '#insert-waypoint')
+                    check(len(state['diagram']['edges'][0]['vertices']) == 4, 'Adding a control restores a cubic Bézier')
+                    revision = state['revision']
+                    page.locator('#edge-route').select_option('polyline')
+                    state = wait_revision(page, revision)
+                    check(state['diagram']['edges'][0]['route'] == 'polyline', 'Switching back retains control points as corners')
+                    for _ in range(4):
+                        state = click_revision(page, '#undo')
+                    check(state['source'] == before['source'] and not state['dirty'], 'Route mode and control edits undo without touching disk')
                     other = Path(temporary) / 'other-project'
                     other.mkdir()
                     (other / 'a-broken.typ').write_text('#unknown-function()', encoding='utf-8')

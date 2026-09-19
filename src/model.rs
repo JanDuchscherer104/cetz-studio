@@ -79,10 +79,31 @@ pub enum Vertex {
         name: String,
         #[serde(skip)]
         span: Span,
+        #[serde(skip)]
+        argument_index: usize,
     },
     Point {
         point: Point,
+        #[serde(skip)]
+        argument_index: usize,
     },
+}
+
+impl Vertex {
+    pub fn argument_index(&self) -> usize {
+        match self {
+            Self::Anchor { argument_index, .. } | Self::Point { argument_index, .. } => {
+                *argument_index
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeRoute {
+    Polyline,
+    Bezier,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -91,6 +112,11 @@ pub struct Edge {
     pub vertices: Vec<Vertex>,
     pub has_label: bool,
     pub editable: bool,
+    pub waypoint_editable: bool,
+    pub waypoint_reason: Option<String>,
+    pub route: EdgeRoute,
+    pub route_editable: bool,
+    pub route_reason: Option<String>,
     pub label_position: Option<[f64; 2]>,
     pub line: usize,
     pub text_fields: Vec<TextField>,
@@ -701,13 +727,22 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         ) {
             let mut vertices = Vec::new();
             for a in &p {
+                let argument_index = call
+                    .arguments
+                    .iter()
+                    .position(|candidate| candidate.outer_span == a.outer_span)
+                    .context("Edge vertex is not a direct call argument")?;
                 if let Some(name) = label_text(source, a) {
                     vertices.push(Vertex::Anchor {
                         name,
                         span: a.span.clone(),
+                        argument_index,
                     });
                 } else if let Some(point) = tuple_point(source, a) {
-                    vertices.push(Vertex::Point { point });
+                    vertices.push(Vertex::Point {
+                        point,
+                        argument_index,
+                    });
                 } else {
                     break;
                 }
@@ -729,6 +764,67 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                 ]
                 .iter()
                 .all(|k| call.named(k).is_none());
+            let route = match call.named("route") {
+                None => EdgeRoute::Polyline,
+                Some(argument) => {
+                    let raw = source[argument.span.clone()].trim();
+                    match serde_json::from_str::<String>(raw).ok().as_deref() {
+                        Some("bezier") => EdgeRoute::Bezier,
+                        Some("polyline") => EdgeRoute::Polyline,
+                        _ => {
+                            warnings.push(format!(
+                                "Line {}: route must be the literal string \"polyline\" or \"bezier\"",
+                                line(source, call.span.start)
+                            ));
+                            EdgeRoute::Polyline
+                        }
+                    }
+                }
+            };
+            let waypoint_reason = (!editable).then(|| {
+                "Waypoint editing requires direct literal vertices without computed routing options"
+                    .into()
+            });
+            let studio_edge = call.callee == "studio.edge" && graph.callee == "studio.diagram";
+            let valid_controls = vertices.len() <= 4
+                && vertices
+                    .iter()
+                    .skip(1)
+                    .take(vertices.len().saturating_sub(2))
+                    .all(|vertex| matches!(vertex, Vertex::Point { point, .. } if point.editable));
+            let literal_route = call.named("route").is_none_or(|argument| {
+                matches!(
+                    source[argument.span.clone()].trim(),
+                    "\"polyline\"" | "\"bezier\""
+                )
+            });
+            let named_ends = matches!(vertices.first(), Some(Vertex::Anchor { .. }))
+                && matches!(vertices.last(), Some(Vertex::Anchor { .. }));
+            let unsupported_style = ["crossing", "decorations", "extrude"].iter().any(|key| {
+                call.named(key).is_some() || graph.named(&format!("edge-{key}")).is_some()
+            }) || p.iter().filter(|arg| arg.kind == K::Str).any(|arg| {
+                serde_json::from_str::<String>(&source[arg.span.clone()])
+                    .ok()
+                    .is_some_and(|text| {
+                        ["crossing", "wave", "zigzag", "coil", "double"].contains(&text.as_str())
+                    })
+            });
+            let route_editable = editable
+                && studio_edge
+                && valid_controls
+                && literal_route
+                && named_ends
+                && call.named("kind").is_none()
+                && !unsupported_style;
+            let route_reason = (!route_editable).then(|| {
+                if !studio_edge {
+                    "Bezier routing requires studio.edge inside studio.diagram".into()
+                } else if !editable || unsupported_style {
+                    "Bezier routing is unavailable with computed or custom routing options".into()
+                } else {
+                    "Bezier routing needs named endpoints, one or two literal controls, and no computed route or custom kind".into()
+                }
+            });
             let label = call.named("label-pos");
             let label_position = label.and_then(|a| {
                 if a.items.len() == 2 {
@@ -764,6 +860,11 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                 vertices,
                 has_label,
                 editable,
+                waypoint_editable: editable,
+                waypoint_reason,
+                route,
+                route_editable,
+                route_reason,
                 label_position,
                 line: line(source, call.span.start),
                 text_fields: vec![text_label],
