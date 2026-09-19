@@ -123,8 +123,12 @@ fn source_capabilities_refuse_unproven_geometry_with_explanations() {
         assert!(apply(&source, vec![route("e0")]).is_err(), "{source}");
     }
     let diagram = model::parse(SOURCE, None).unwrap();
-    assert!(routing::capabilities(SOURCE, Some(&diagram), false)[0].reason.is_some());
-    assert!(routing::capabilities(SOURCE, Some(&diagram), true)[0].reason.is_none());
+    assert!(routing::capabilities(SOURCE, Some(&diagram), false)[0]
+        .reason
+        .is_some());
+    assert!(routing::capabilities(SOURCE, Some(&diagram), true)[0]
+        .reason
+        .is_none());
 }
 
 #[test]
