@@ -1,0 +1,60 @@
+# Temporary, branch-scoped verification environment. Removed before final delivery.
+name: Routing workbench
+on:
+  push:
+    branches: [codex/issue-5-obstacle-routing]
+    paths: [.github/workflows/routing-workbench.yml]
+permissions:
+  contents: read
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.89.0
+          components: rustfmt, clippy
+      - name: Resolve the selected Rust foundation without upgrading the base lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/route-tools/source"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/route-tools/source"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'route-tools/source/Cargo.toml'
+          s = p.read_text()
+          p.write_text(s.replace('[dependencies]\n', '[dependencies]\npathfinding = "=4.15.0"\n', 1))
+          PY
+          cargo fetch --manifest-path "$RUNNER_TEMP/route-tools/source/Cargo.toml"
+          cargo metadata --locked --format-version 1 --manifest-path "$RUNNER_TEMP/route-tools/source/Cargo.toml" > "$RUNNER_TEMP/route-tools/dependencies.json"
+      - name: Prepare bounded portable verification bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/route-tools"
+          toolchain="$(rustc --print sysroot)"
+          mkdir -p "$out/rust/bin" "$out/rust/lib" "$out/cargo/registry" "$out/typst"
+          cp "$toolchain/bin/"{cargo,rustc,rustfmt,cargo-fmt,clippy-driver,cargo-clippy} "$out/rust/bin/"
+          cp "$toolchain/lib/"*.so "$out/rust/lib/"
+          cp -a "$toolchain/lib/rustlib" "$out/rust/lib/"
+          rm -rf "$out/rust/lib/rustlib/etc"
+          cp -a "$HOME/.cargo/registry/"{src,cache,index} "$out/cargo/registry/"
+          curl --fail --location --retry 3 https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-unknown-linux-musl.tar.xz -o "$RUNNER_TEMP/typst.tar.xz"
+          tar -xJf "$RUNNER_TEMP/typst.tar.xz" --strip-components=1 -C "$out/typst"
+          git rev-parse HEAD > "$out/source-commit.txt"
+          rustc --version > "$out/tool-versions.txt"
+          cargo --version >> "$out/tool-versions.txt"
+          "$out/typst/typst" --version >> "$out/tool-versions.txt"
+          tar -czf "$RUNNER_TEMP/routing-workbench.tgz" -C "$RUNNER_TEMP" route-tools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: routing-workbench-linux
+          path: ${{ runner.temp }}/routing-workbench.tgz
+          retention-days: 1
+          compression-level: 0
