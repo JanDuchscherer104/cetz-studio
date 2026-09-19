@@ -14,20 +14,25 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> None:
     html = (ROOT / "web/index.html").read_text(encoding="utf-8")
     css = (ROOT / "web/style.css").read_text(encoding="utf-8")
+    routing_css = (ROOT / "web/routing.css").read_text(encoding="utf-8")
     app = (ROOT / "web/app.js").read_text(encoding="utf-8")
+    routing = (ROOT / "web/routing-ui.js").read_text(encoding="utf-8")
     fixture = (ROOT / "tests/ui_fixture.js").read_text(encoding="utf-8")
     demo = (ROOT / "examples/demo.typ").read_text(encoding="utf-8")
     # Escape a closing script tag should the opaque example ever contain one.
     payload = "window.CETZ_STUDIO_DEMO_SOURCE=" + json.dumps(demo).replace("</", "<\\/") + ";\n" + fixture
-    if "</script" in app.lower() or "</script" in fixture.lower():
+    if any("</script" in script.lower() for script in (app, fixture, routing)):
         raise ValueError("Unexpected closing script tag in embedded JavaScript")
     stylesheet = '<link rel="stylesheet" href="/style.css">'
     script = '<script defer src="/app.js"></script>'
     if stylesheet not in html or script not in html:
         raise ValueError("Production asset tags changed; update the preview bundler")
     html = html.replace(stylesheet, "<style>" + css + "</style>")
+    html = html.replace('<link rel="stylesheet" href="/routing.css">', "<style>" + routing_css + "</style>")
+    html = html.replace('<script defer src="/routing-ui.js"></script>', "")
     html = html.replace(script, "")
-    html = html.replace("</body>", "<script>" + payload + "</script><script>" + app + "</script></body>")
+    # Routing is disabled in this fixture; the real Worker is tested separately.
+    html = html.replace("</body>", "<script>" + payload + "</script><script>" + routing + "</script><script>" + app + "</script></body>")
     destination = ROOT / "ui-preview.html"
     destination.write_text(html, encoding="utf-8")
     print(f"Built {destination}: browser fixture only; native backend not executed")

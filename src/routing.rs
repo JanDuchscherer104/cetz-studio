@@ -89,9 +89,16 @@ fn eligible(source: &str, diagram: &Diagram, edge: &Edge) -> Result<(Endpoint, E
             arg.kind == typst_syntax::SyntaxKind::ContentBlock
                 || (arg.kind == typst_syntax::SyntaxKind::Str
                     && [
-                        "\"-\"", "\"--\"", "\"->\"", "\"<-\"", "\"<->\"", "\"-|>\"", "\"<|-\"", "\"<|-|>\"",
+                        "\"-\"",
+                        "\"--\"",
+                        "\"->\"",
+                        "\"<-\"",
+                        "\"<->\"",
+                        "\"-|>\"",
+                        "\"<|-\"",
+                        "\"<|-|>\"",
                     ]
-                        .contains(&source[arg.span.clone()].trim()))
+                    .contains(&source[arg.span.clone()].trim()))
         }),
         "Computed edge arguments or relative routing modes stay source-owned"
     );

@@ -61,6 +61,14 @@ jobs:
           echo "${install_dir}" >> "${GITHUB_PATH}"
           "${install_dir}/typst" --version
 
+      - name: Install routing test runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test the bounded routing worker
+        run: node --test tests/routing.test.js
+
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
@@ -117,6 +125,17 @@ jobs:
 
       - name: Verify native browser round trips
         run: python tests/native_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
+
+      - name: Verify routing preview and native round trips
+        run: python tests/routing_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output .ci/routing
+
+      - name: Retain routing screenshots and measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-routing-${{ matrix.os }}
+          path: .ci/routing
+          if-no-files-found: warn
 
       - name: Compile Typst package examples
         if: hashFiles('typst/**/examples/*.typ') != ''
