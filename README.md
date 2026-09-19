@@ -1,6 +1,16 @@
 # Cetz Studio
 
-Preview Typst graphics and adjust their layout without replacing the source.
+**Draw with code. Refine on canvas. Keep your Typst.**
+
+[![CI](https://github.com/JanDuchscherer104/cetz-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/JanDuchscherer104/cetz-studio/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-6bddb5)](LICENSE)
+![Platforms: macOS and Ubuntu](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Ubuntu-8ba6bf)
+
+Move a node. Rewrite a label. Add a connection. See a real Typst render and
+inspect the source diff before saving.
+
+![Cetz Studio showing a native Typst diagram, project browser, and content inspector](docs/media/studio-workspace.png)
+
 Cetz Studio combines a local Rust/browser editor with a reusable Typst package
 for CeTZ and Fletcher drawings. This independent project is unaffiliated with
 the CeTZ, Fletcher, and Typst maintainers.
@@ -9,6 +19,23 @@ the CeTZ, Fletcher, and Typst maintainers.
 of truth. Supported literal graph coordinates have drag handles; explicit
 `studio.param` declarations expose layout and style controls. Other graphics
 open as previews with explanations of editing limitations.
+
+| In the canvas | In your source |
+| --- | --- |
+| Drag nodes and edit selected content | Focused changes to coordinates and Typst expressions |
+| Duplicate nodes or insert a primitive | Named Fletcher/Studio calls with existing styles |
+| Browse a folder and check capabilities | Your existing files, imports, fonts, and assets |
+| Preview, undo, and compare | Compilation before adoption; explicit Save with a backup |
+
+<details>
+<summary>Watch: edit content, explore primitives, move a node, and undo</summary>
+
+![Native editor walkthrough](docs/media/studio-demo.gif)
+
+Captured from the running Rust server and Typst compiler on the included
+workspace example. This is an editable demonstration, not a scientific result.
+
+</details>
 
 ## Run locally
 
@@ -19,7 +46,7 @@ Both macOS and Ubuntu use the same commands. No Node/npm build is required.
 ```sh
 git clone https://github.com/JanDuchscherer104/cetz-studio.git
 cd cetz-studio
-cargo run --locked --release -- --file examples/studio-cetz.typ --root .
+cargo run --locked --release -- --file examples/studio-workspace.typ --root .
 ```
 
 Open **http://127.0.0.1:3847**. Use that exact address rather than `localhost`.
