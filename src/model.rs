@@ -800,16 +800,26 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
             });
             let named_ends = matches!(vertices.first(), Some(Vertex::Anchor { .. }))
                 && matches!(vertices.last(), Some(Vertex::Anchor { .. }));
+            let unsupported_style = ["crossing", "decorations", "extrude"].iter().any(|key| {
+                call.named(key).is_some() || graph.named(&format!("edge-{key}")).is_some()
+            }) || p.iter().filter(|arg| arg.kind == K::Str).any(|arg| {
+                serde_json::from_str::<String>(&source[arg.span.clone()])
+                    .ok()
+                    .is_some_and(|text| {
+                        ["crossing", "wave", "zigzag", "coil", "double"].contains(&text.as_str())
+                    })
+            });
             let route_editable = editable
                 && studio_edge
                 && valid_controls
                 && literal_route
                 && named_ends
-                && call.named("kind").is_none();
+                && call.named("kind").is_none()
+                && !unsupported_style;
             let route_reason = (!route_editable).then(|| {
                 if !studio_edge {
                     "Bezier routing requires studio.edge inside studio.diagram".into()
-                } else if !editable {
+                } else if !editable || unsupported_style {
                     "Bezier routing is unavailable with computed or custom routing options".into()
                 } else {
                     "Bezier routing needs named endpoints, one or two literal controls, and no computed route or custom kind".into()

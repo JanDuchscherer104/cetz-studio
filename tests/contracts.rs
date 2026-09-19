@@ -9,6 +9,21 @@ use std::fs;
 use tempfile::tempdir;
 
 #[test]
+fn unsupported_bezier_styles_are_explained_before_compilation() {
+    for option in [
+        "crossing: true",
+        "decorations: \"wave\"",
+        "\"double\"",
+        "\"crossing\"",
+    ] {
+        let source = format!("#studio.diagram(studio.node((0mm, 0mm), [A], name: <a>), studio.node((50mm, 0mm), [B], name: <b>), studio.edge(<a>, <b>, {option}))");
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(!diagram.edges[0].route_editable, "{option}");
+        assert!(diagram.edges[0].route_reason.is_some());
+    }
+}
+
+#[test]
 fn manual_corner_removal_preserves_neighbor_comments_and_route_switch_updates_literal() {
     let source = "#studio.diagram(studio.node((0mm, 0mm), [A], name: <a>), studio.node((50mm, 0mm), [B], name: <b>), studio.edge(<a>, (10mm, 20mm) /* keep context */, <b>, [label], route: \"polyline\"))";
     let diagram = model::parse(source, None).unwrap();

@@ -18,7 +18,7 @@
   }
 }
 
-#let draw-edge(fletcher, edge, nodes, debug: 0) = {
+#let draw-edge(fletcher, edge, nodes, debug: 0, on-anchors: none) = {
   assert(edge.final-vertices.len() in (3, 4),
     message: "Studio Bezier edges need one or two control points")
   assert(edge.extrude.len() == 1 and edge.extrude.first() == 0pt,
@@ -39,6 +39,7 @@
   })
 
   fletcher.find-anchor-pair(intersection-objects, (start, end), anchors => {
+    if on-anchors != none { on-anchors(anchors) }
     let points = (anchors.first(), ..controls, anchors.last())
     let curve(t) = point(fletcher, points, t)
     let drawing = fletcher.cetz.draw.group({
@@ -62,4 +63,3 @@
     (edge.post)(drawing)
   })
 }
-
