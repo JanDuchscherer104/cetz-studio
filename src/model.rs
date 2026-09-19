@@ -3,7 +3,7 @@
 //! whole-document pretty-printer. Unknown expressions remain unmodified.
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde::Serialize;
-use std::{collections::HashSet, ops::Range};
+use std::{collections::HashMap, collections::HashSet, ops::Range};
 use typst_syntax::{SyntaxKind as K, SyntaxNode};
 
 pub const PT_PER_MM: f64 = 72.0 / 25.4;
@@ -35,6 +35,41 @@ pub struct Node {
     pub position: Option<Point>,
     pub editable: bool,
     pub line: usize,
+    pub text_fields: Vec<TextField>,
+    pub attached_edges: usize,
+    pub deletable: bool,
+    pub delete_reason: Option<String>,
+    #[serde(skip)]
+    pub call: Call,
+    #[serde(skip)]
+    pub name_span: Span,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TextField {
+    pub id: String,
+    pub value: String,
+    pub editable: bool,
+    pub reason: Option<String>,
+    pub source: String,
+    pub source_editable: bool,
+    #[serde(skip)]
+    pub span: Option<Span>,
+    #[serde(skip)]
+    pub raw_span: Option<Span>,
+    #[serde(skip)]
+    pub encoding: TextEncoding,
+    #[serde(skip)]
+    pub positional_edge_label: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum TextEncoding {
+    #[default]
+    Unsupported,
+    Content,
+    String,
+    EdgeLabelPositional,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -58,6 +93,7 @@ pub struct Edge {
     pub editable: bool,
     pub label_position: Option<[f64; 2]>,
     pub line: usize,
+    pub text_fields: Vec<TextField>,
     #[serde(skip)]
     pub call: Call,
 }
@@ -65,9 +101,11 @@ pub struct Edge {
 #[derive(Clone, Debug)]
 pub struct Argument {
     pub name: Option<String>,
+    pub outer_span: Span,
     pub span: Span,
     pub kind: K,
     pub items: Vec<(K, Span)>,
+    pub plain_text: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -75,6 +113,8 @@ pub struct Call {
     pub callee: String,
     pub span: Span,
     pub args_open: usize,
+    pub args_close: usize,
+    pub commas: Vec<Span>,
     pub arguments: Vec<Argument>,
 }
 impl Call {
@@ -94,8 +134,13 @@ pub struct Diagram {
     pub edges: Vec<Edge>,
     pub warnings: Vec<String>,
     pub y_scale: f64,
+    pub insert_primitives: Vec<String>,
+    pub insertion_reason: Option<String>,
+    pub opaque_references: bool,
     #[serde(skip)]
     pub call: Call,
+    #[serde(skip)]
+    pub import_aliases: HashMap<String, String>,
 }
 
 fn children(node: &SyntaxNode, offset: usize) -> Vec<(&SyntaxNode, Span)> {
@@ -129,7 +174,7 @@ fn argument(node: &SyntaxNode, span: Span, source: &str) -> Result<Argument> {
             ch[1].1.clone(),
         )
     } else {
-        (None, node, span)
+        (None, node, span.clone())
     };
     let items = if value.kind() == K::Array {
         expression_children(value, range.start)
@@ -139,12 +184,36 @@ fn argument(node: &SyntaxNode, span: Span, source: &str) -> Result<Argument> {
     } else {
         vec![]
     };
+    let plain_text = literal_content(value, range.clone(), source);
     Ok(Argument {
         name,
+        outer_span: span,
         span: range,
         kind: value.kind(),
         items,
+        plain_text,
     })
+}
+
+fn literal_content(node: &SyntaxNode, span: Span, source: &str) -> Option<String> {
+    if node.kind() != K::ContentBlock {
+        return None;
+    }
+    fn validate(node: &SyntaxNode) -> bool {
+        match node.kind() {
+            K::ContentBlock | K::Markup => node.children().all(validate),
+            K::LeftBracket | K::RightBracket | K::Text | K::Space => true,
+            _ => false,
+        }
+    }
+    if !validate(node) {
+        return None;
+    }
+    source[span]
+        .trim()
+        .strip_prefix('[')?
+        .strip_suffix(']')
+        .map(str::to_string)
 }
 
 fn parse_call(node: &SyntaxNode, span: Span, source: &str) -> Result<Option<Call>> {
@@ -164,10 +233,17 @@ fn parse_call(node: &SyntaxNode, span: Span, source: &str) -> Result<Option<Call
         .into_iter()
         .map(|(n, s)| argument(n, s, source))
         .collect::<Result<_>>()?;
+    let commas = children(args, args_span.start)
+        .into_iter()
+        .filter(|(node, _)| node.kind() == K::Comma)
+        .map(|(_, span)| span)
+        .collect();
     Ok(Some(Call {
         callee,
         span,
         args_open: args_span.start,
+        args_close: args_span.end - 1,
+        commas,
         arguments,
     }))
 }
@@ -192,6 +268,42 @@ fn collect_calls(
     for (child, span) in children(node, offset) {
         collect_calls(child, span.start, source, calls)?;
     }
+    Ok(())
+}
+
+pub fn validate_argument_source(source: &str) -> Result<()> {
+    ensure!(!source.is_empty(), "Content source cannot be empty");
+    ensure!(source.len() <= 64 * 1024, "Content source exceeds 64 KiB");
+    ensure!(
+        source.trim() == source,
+        "Content source cannot start or end with trivia"
+    );
+    let prefix = "#probe(";
+    let wrapped = format!("{prefix}{source})");
+    let root = typst_syntax::parse(&wrapped);
+    ensure!(
+        !root.erroneous(),
+        "Content source is not valid Typst syntax"
+    );
+    let mut calls = Vec::new();
+    collect_calls(&root, 0, &wrapped, &mut calls)?;
+    let call = calls
+        .iter()
+        .find(|call| call.callee == "probe")
+        .context("Content source did not parse as an argument")?;
+    ensure!(
+        call.arguments.len() == 1,
+        "Content source must be exactly one Typst expression"
+    );
+    let argument = &call.arguments[0];
+    ensure!(
+        argument.name.is_none() && argument.kind != K::Spread,
+        "Content source must be a value, not an argument declaration"
+    );
+    ensure!(
+        argument.outer_span == (prefix.len()..prefix.len() + source.len()),
+        "Content source must be exactly one Typst expression"
+    );
     Ok(())
 }
 
@@ -294,8 +406,209 @@ fn call_title(source: &str, args: &[&Argument]) -> String {
         .unwrap_or_default()
 }
 
+fn text_field(source: &str, arg: Option<&Argument>, id: &str) -> TextField {
+    let reason = "Contains Typst markup or computed content; rich content stays source-owned";
+    let Some(arg) = arg else {
+        return TextField {
+            id: id.into(),
+            value: String::new(),
+            editable: false,
+            reason: Some("No literal text field is present in this constructor".into()),
+            source: String::new(),
+            source_editable: false,
+            span: None,
+            raw_span: None,
+            encoding: TextEncoding::Unsupported,
+            positional_edge_label: false,
+        };
+    };
+    let raw = source[arg.span.clone()].trim();
+    if arg.kind == K::ContentBlock {
+        let inner = raw
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .unwrap_or("");
+        if let Some(value) = &arg.plain_text {
+            return TextField {
+                id: id.into(),
+                value: value.clone(),
+                editable: true,
+                reason: None,
+                source: raw.to_string(),
+                source_editable: true,
+                span: Some(arg.span.clone()),
+                raw_span: Some(arg.span.clone()),
+                encoding: TextEncoding::Content,
+                positional_edge_label: false,
+            };
+        }
+        return TextField {
+            id: id.into(),
+            value: inner
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(90)
+                .collect(),
+            editable: false,
+            reason: Some(reason.into()),
+            source: raw.to_string(),
+            source_editable: true,
+            span: None,
+            raw_span: Some(arg.span.clone()),
+            encoding: TextEncoding::Unsupported,
+            positional_edge_label: false,
+        };
+    }
+    if arg.kind == K::Str {
+        if let Ok(value) = serde_json::from_str::<String>(raw) {
+            return TextField {
+                id: id.into(),
+                value,
+                editable: true,
+                reason: None,
+                source: raw.to_string(),
+                source_editable: true,
+                span: Some(arg.span.clone()),
+                raw_span: Some(arg.span.clone()),
+                encoding: TextEncoding::String,
+                positional_edge_label: false,
+            };
+        }
+    }
+    TextField {
+        id: id.into(),
+        value: raw.chars().take(90).collect(),
+        editable: false,
+        reason: Some(reason.into()),
+        source: raw.to_string(),
+        source_editable: true,
+        span: None,
+        raw_span: Some(arg.span.clone()),
+        encoding: TextEncoding::Unsupported,
+        positional_edge_label: false,
+    }
+}
+
+fn node_text_fields(source: &str, call: &Call, positional: &[&Argument]) -> Vec<TextField> {
+    let content = |index: usize| {
+        positional
+            .iter()
+            .filter(|arg| matches!(arg.kind, K::ContentBlock | K::Str))
+            .nth(index)
+            .copied()
+    };
+    match call.callee.as_str() {
+        "studio.card" => vec![
+            text_field(source, positional.get(1).copied(), "title"),
+            text_field(source, call.named("body"), "body"),
+        ],
+        "n" | "content-at" => vec![
+            text_field(source, positional.get(3).copied(), "title"),
+            text_field(source, call.named("body"), "body"),
+        ],
+        "junction" => Vec::new(),
+        "node"
+        | "f.node"
+        | "fletcher.node"
+        | "studio.fletcher.node"
+        | "studio.node"
+        | "content-node" => {
+            vec![text_field(source, positional.get(1).copied(), "title")]
+        }
+        "card" | "addition" | "named-entity" => vec![
+            text_field(source, content(0), "title"),
+            text_field(source, content(1), "body"),
+        ],
+        _ => Vec::new(),
+    }
+}
+
 fn line(source: &str, offset: usize) -> usize {
     source[..offset].bytes().filter(|&c| c == b'\n').count() + 1
+}
+
+fn import_aliases(root: &SyntaxNode, source: &str) -> HashMap<String, String> {
+    let mut aliases = HashMap::new();
+    let mut ambiguous = HashSet::new();
+    for (node, span) in children(root, 0) {
+        if node.kind() == K::LetBinding {
+            if let Some((_, name_span)) = children(node, span.start)
+                .iter()
+                .find(|(part, _)| part.kind() == K::Ident)
+            {
+                let name = source[name_span.clone()].to_string();
+                ambiguous.insert(name.clone());
+                aliases.remove(&name);
+            }
+            continue;
+        }
+        if node.kind() != K::ModuleImport {
+            continue;
+        }
+        let parts = children(node, span.start);
+        let Some((_, path_span)) = parts.iter().find(|(part, _)| part.kind() == K::Str) else {
+            continue;
+        };
+        let raw = source[path_span.clone()].trim();
+        let Ok(path) = serde_json::from_str::<String>(raw) else {
+            continue;
+        };
+        let Some((_, alias_span)) = parts.iter().rev().find(|(part, _)| part.kind() == K::Ident)
+        else {
+            continue;
+        };
+        let alias = source[alias_span.clone()].to_string();
+        if ambiguous.contains(&alias) || aliases.contains_key(&alias) {
+            ambiguous.insert(alias.clone());
+            aliases.remove(&alias);
+        } else {
+            aliases.insert(alias, path);
+        }
+    }
+    fn collect_bindings(node: &SyntaxNode, names: &mut HashSet<String>) {
+        if let Some(binding) = node.cast::<typst_syntax::ast::LetBinding>() {
+            names.extend(
+                binding
+                    .kind()
+                    .bindings()
+                    .into_iter()
+                    .map(|id| id.get().to_string()),
+            );
+        }
+        for child in node.children() {
+            collect_bindings(child, names);
+        }
+    }
+    let mut bindings = HashSet::new();
+    collect_bindings(root, &mut bindings);
+    aliases.retain(|alias, _| !bindings.contains(alias));
+    aliases
+}
+
+fn insertion_capabilities(aliases: &HashMap<String, String>) -> (Vec<String>, Option<String>) {
+    let studio = aliases.iter().any(|(alias, path)| {
+        alias == "studio"
+            && (path.ends_with("cetz-studio/lib.typ")
+                || path.starts_with("@preview/cetz-studio:")
+                || path.starts_with("@local/cetz-studio:"))
+    });
+    let fletcher = aliases.iter().any(|(alias, path)| {
+        matches!(alias.as_str(), "f" | "fletcher")
+            && (path.starts_with("@preview/fletcher:") || path.ends_with("fletcher/lib.typ"))
+    });
+    let mut primitives = Vec::new();
+    if studio {
+        primitives.extend(["studio-node", "studio-card"]);
+        primitives.extend(["fletcher-rect", "fletcher-ellipse", "fletcher-diamond"]);
+    } else if fletcher {
+        primitives.extend(["fletcher-rect", "fletcher-ellipse", "fletcher-diamond"]);
+    }
+    let reason = primitives.is_empty().then(|| {
+        "Node insertion needs an explicit Cetz Studio or Fletcher import alias; CeTZ canvas insertion is not supported".into()
+    });
+    (primitives.into_iter().map(str::to_string).collect(), reason)
 }
 
 fn n_scale(root: &SyntaxNode, source: &str) -> Result<f64> {
@@ -347,6 +660,8 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         "Invalid y-scale"
     );
     let mut calls = Vec::new();
+    let import_aliases = import_aliases(&root, source);
+    let (insert_primitives, insertion_reason) = insertion_capabilities(&import_aliases);
     collect_calls(&root, 0, source, &mut calls)?;
     let roots: Vec<_> = calls
         .iter()
@@ -366,11 +681,13 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut warnings = Vec::new();
+    let mut opaque_references = false;
     let mut names = HashSet::new();
     // Only immediate positional graph arguments are source-editable. Nested
     // labels, embedded backbone glyphs and closures are deliberately opaque.
     for arg in graph.arguments.iter().filter(|a| a.name.is_none()) {
         let Some(call) = calls.iter().find(|c| c.span == arg.span) else {
+            opaque_references = true;
             warnings.push(format!(
                 "Line {}: computed graph argument is not editable",
                 line(source, arg.span.start)
@@ -395,6 +712,12 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                     break;
                 }
             }
+            // The unparsed tail may contain generated vertices rather than a
+            // label. Such references cannot safely participate in deletion.
+            opaque_references |= call.named("vertices").is_some()
+                || p[vertices.len()..]
+                    .iter()
+                    .any(|arg| !matches!(arg.kind, K::Str | K::ContentBlock));
             let editable = vertices.len() >= 2
                 && [
                     "bend",
@@ -417,14 +740,25 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                     Some([0.0, numeric(source, a.span.clone(), 1.0).ok()?.value])
                 }
             });
-            let has_label =
-                p.iter().any(|a| a.kind == K::ContentBlock) || call.named("label").is_some();
+            let label_arg = call.named("label").or_else(|| {
+                p.iter()
+                    .skip(vertices.len())
+                    .find(|arg| arg.kind != K::Str)
+                    .copied()
+            });
+            let has_label = label_arg.is_some();
             if !editable {
                 warnings.push(format!(
                     "Line {}: edge has unsupported routing; source retained",
                     line(source, call.span.start)
                 ));
             }
+            let mut text_label = text_field(source, label_arg, "label");
+            if label_arg.is_some_and(|argument| argument.name.is_none()) && text_label.editable {
+                text_label.encoding = TextEncoding::EdgeLabelPositional;
+            }
+            text_label.positional_edge_label =
+                label_arg.is_some_and(|argument| argument.name.is_none());
             edges.push(Edge {
                 id: format!("e{}", edges.len()),
                 vertices,
@@ -432,6 +766,7 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                 editable,
                 label_position,
                 line: line(source, call.span.start),
+                text_fields: vec![text_label],
                 call: call.clone(),
             });
             continue;
@@ -457,13 +792,20 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
             "addition" | "named-entity" | "card" if p.len() >= 2 => {
                 (Some(p[1]), tuple_point(source, p[0]))
             }
-            "entity" | "node" | "f.node" | "fletcher.node" | "studio.node" | "studio.card"
+            "entity"
+            | "node"
+            | "f.node"
+            | "fletcher.node"
+            | "studio.fletcher.node"
+            | "studio.node"
+            | "studio.card"
             | "content-node"
                 if !p.is_empty() =>
             {
                 (named, tuple_point(source, p[0]))
             }
             _ => {
+                opaque_references = true;
                 warnings.push(format!(
                     "Line {}: unsupported graph constructor {}",
                     line(source, call.span.start),
@@ -488,13 +830,25 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                 "<{id}> uses elastic/computed coordinates and is read-only"
             ));
         }
+        let text_fields = node_text_fields(source, call, &p);
+        let title = text_fields
+            .iter()
+            .find(|field| field.id == "title")
+            .map(|field| field.value.clone())
+            .unwrap_or_else(|| call_title(source, &p));
         nodes.push(Node {
             id,
-            title: call_title(source, &p),
+            title,
             kind: call.callee.clone(),
             position,
             editable,
             line: line(source, call.span.start),
+            text_fields,
+            attached_edges: 0,
+            deletable: false,
+            delete_reason: None,
+            call: call.clone(),
+            name_span: id_arg.expect("validated node name").span.clone(),
         });
     }
     ensure!(!nodes.is_empty(), "No named nodes recognized");
@@ -502,6 +856,46 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         nodes.len() < 4096 && edges.len() < 256 && edges.iter().all(|e| e.vertices.len() < 256),
         "Diagram exceeds prototype limits"
     );
+    let only_node = nodes.len() == 1;
+    let node_ids: HashMap<&str, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.id.as_str(), i))
+        .collect();
+    let mut attached = vec![0usize; nodes.len()];
+    for edge in &edges {
+        let mut seen = HashSet::new();
+        for vertex in &edge.vertices {
+            if let Vertex::Anchor { name, .. } = vertex {
+                let mut candidate = name.as_str();
+                loop {
+                    if let Some(&index) = node_ids.get(candidate) {
+                        seen.insert(index);
+                        break;
+                    }
+                    let Some((prefix, _)) = candidate.rsplit_once('.') else {
+                        break;
+                    };
+                    candidate = prefix;
+                }
+            }
+        }
+        for index in seen {
+            attached[index] += 1;
+        }
+    }
+    drop(node_ids);
+    for (node, count) in nodes.iter_mut().zip(attached) {
+        node.attached_edges = count;
+        node.delete_reason = if only_node {
+            Some("The final recognized node cannot be deleted because the editor requires a non-empty graph".into())
+        } else if opaque_references {
+            Some("Deletion is unavailable because computed or unsupported graph arguments may reference this node".into())
+        } else {
+            None
+        };
+        node.deletable = node.delete_reason.is_none();
+    }
     if edges
         .iter()
         .any(|e| matches!(e.vertices.first(), Some(Vertex::Point { .. })))
@@ -513,6 +907,10 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         edges,
         warnings,
         y_scale: scale,
+        insert_primitives,
+        insertion_reason,
+        opaque_references,
         call: graph,
+        import_aliases,
     })
 }

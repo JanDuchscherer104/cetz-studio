@@ -8,6 +8,33 @@ use cetz_studio::{
 use std::fs;
 use tempfile::tempdir;
 
+#[test]
+fn computed_and_named_edge_vertices_block_node_deletion() {
+    for edge in ["edge(vertices: (<a>, <b>))", "edge(<a>, ..route)"] {
+        let source = format!(
+            "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <b>), {edge})"
+        );
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(diagram.opaque_references);
+        assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    }
+}
+
+#[test]
+fn destructured_import_alias_is_not_an_insertion_capability() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let (studio,) = (none,)\n#diagram(node((0mm, 0mm), [A], name: <a>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+}
+
+#[test]
+fn attachment_counts_resolve_dotted_names_once_per_edge() {
+    let source = "#diagram(node((0mm, 0mm), [A], name: <a>), node((30mm, 0mm), [B], name: <a.b>), edge(<a.b.east>, <a.b>), edge(<a>, <a.b.west>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    assert_eq!(diagram.nodes[1].attached_edges, 2);
+}
+
 const SOURCE: &str = "// αβ Unicode before source spans\n#graph(\n n(1.00, -2, <a>, [Keep *this* and $x_i$]),\n n(30, 20, <b>, [Keep #box[all, nested] content]),\n edge(<a>, (15mm, 2mm), (15mm, -20mm), <b.west>, \"-|>\", [$f_i$], label-pos: (1, .5)),\n)\n";
 
 #[test]
@@ -382,6 +409,431 @@ fn preview_instrumentation_is_a_separate_document() {
 fn protocol_cannot_replace_the_document() {
     assert!(serde_json::from_str::<Command>(
         r#"{"kind":"move_node","id":"a","x":1,"y":2,"source":"evil"}"#
+    )
+    .is_err());
+}
+
+#[test]
+fn literal_node_and_edge_text_are_editable_without_touching_style() {
+    let source = "#graph(\n n(1, 2, <a>, [Alpha]),\n n(3, 4, <b>, [Beta]),\n edge(<a>, <b>, \"->\", [old], stroke: 2pt),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].text_fields[0].id, "title");
+    assert!(diagram.nodes[0].text_fields[0].editable);
+    assert_eq!(diagram.edges[0].text_fields[0].value, "old");
+
+    let node_changed = edit::apply(
+        source,
+        &diagram,
+        &Command::SetNodeText {
+            id: "a".into(),
+            field: "title".into(),
+            text: "First node".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(node_changed, source.replace("[Alpha]", "\"First node\""));
+
+    let diagram = model::parse(&node_changed, None).unwrap();
+    let edge_changed = edit::apply(
+        &node_changed,
+        &diagram,
+        &Command::SetEdgeText {
+            edge: "e0".into(),
+            field: "label".into(),
+            text: "new label".into(),
+        },
+    )
+    .unwrap();
+    assert!(edge_changed.contains("label: \"new label\", stroke: 2pt"));
+    let reparsed = model::parse(&edge_changed, None).unwrap();
+    assert_eq!(reparsed.edges[0].text_fields[0].value, "new label");
+    let changed_again = edit::apply(
+        &edge_changed,
+        &reparsed,
+        &Command::SetEdgeText {
+            edge: "e0".into(),
+            field: "label".into(),
+            text: "final label".into(),
+        },
+    )
+    .unwrap();
+    assert!(changed_again.contains("label: \"final label\", stroke: 2pt"));
+}
+
+#[test]
+fn rich_or_computed_text_is_explicitly_read_only() {
+    let diagram = model::parse(SOURCE, None).unwrap();
+    let title = &diagram.nodes[0].text_fields[0];
+    assert!(!title.editable);
+    assert!(title.reason.as_deref().unwrap().contains("Typst markup"));
+    assert!(title.source_editable);
+    assert_eq!(title.source, "[Keep *this* and $x_i$]");
+    let error = edit::apply(
+        SOURCE,
+        &diagram,
+        &Command::SetNodeText {
+            id: "a".into(),
+            field: "title".into(),
+            text: "replacement".into(),
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("Typst markup"));
+    assert!(SOURCE.contains("$x_i$"));
+}
+
+#[test]
+fn raw_content_editor_can_replace_selected_math_without_flattening_it() {
+    let diagram = model::parse(SOURCE, None).unwrap();
+    let node_changed = edit::apply(
+        SOURCE,
+        &diagram,
+        &Command::SetNodeSource {
+            id: "a".into(),
+            field: "title".into(),
+            source: "[Score $x^2 + y^2$]".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        node_changed,
+        SOURCE.replace("[Keep *this* and $x_i$]", "[Score $x^2 + y^2$]")
+    );
+
+    let diagram = model::parse(&node_changed, None).unwrap();
+    let edge_changed = edit::apply(
+        &node_changed,
+        &diagram,
+        &Command::SetEdgeSource {
+            edge: "e0".into(),
+            field: "label".into(),
+            source: "[$x + y$]".into(),
+        },
+    )
+    .unwrap();
+    assert!(edge_changed.contains("label: [$x + y$], label-pos: (1, .5)"));
+    let reparsed = model::parse(&edge_changed, None).unwrap();
+    assert_eq!(reparsed.edges[0].text_fields[0].source, "[$x + y$]");
+}
+
+#[test]
+fn raw_content_editor_rejects_graph_structure_injection() {
+    let diagram = model::parse(SOURCE, None).unwrap();
+    for source in [
+        "[safe], edge(<a>, <b>, \"->\")",
+        "[safe]) #graph(n(1, 2, <evil>, [bad]))",
+        "label: [safe]",
+        "..payload",
+    ] {
+        assert!(
+            edit::apply(
+                SOURCE,
+                &diagram,
+                &Command::SetNodeSource {
+                    id: "a".into(),
+                    field: "title".into(),
+                    source: source.into(),
+                },
+            )
+            .is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn computed_content_expression_is_raw_editable_but_not_plain_editable() {
+    let source = "#graph(n(1, 2, <a>, title_value), n(3, 4, <b>, [B]))";
+    let diagram = model::parse(source, None).unwrap();
+    let field = &diagram.nodes[0].text_fields[0];
+    assert!(!field.editable);
+    assert!(field.source_editable);
+    assert_eq!(field.source, "title_value");
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::SetNodeSource {
+            id: "a".into(),
+            field: "title".into(),
+            source: "[Literal now]".into(),
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("<a>, [Literal now]"));
+}
+
+#[test]
+fn comments_and_structural_markup_are_never_mistaken_for_plain_text() {
+    for content in [
+        "[visible // hidden\n]",
+        "[visible /* hidden */]",
+        "[= Heading]",
+        "[- item]",
+    ] {
+        let source = format!("#graph(n(1, 2, <a>, {content}))");
+        let diagram = model::parse(&source, None).unwrap();
+        assert!(!diagram.nodes[0].text_fields[0].editable, "{content}");
+    }
+}
+
+#[test]
+fn n_title_and_body_are_independent_and_new_punctuation_is_string_encoded() {
+    let source = "#graph(n(1, 2, <a>, [Title], body: [plain body]))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].text_fields.len(), 2);
+    assert_eq!(diagram.nodes[0].text_fields[1].id, "body");
+    let replacement = "cost: $5 #1 [draft] \"q\" \\path\nnext";
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::SetNodeText {
+            id: "a".into(),
+            field: "body".into(),
+            text: replacement.into(),
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("body: \"cost: $5 #1 [draft] \\\"q\\\" \\\\path\\nnext\""));
+    let reparsed = model::parse(&changed, None).unwrap();
+    assert!(reparsed.nodes[0].text_fields[1].editable);
+    assert_eq!(reparsed.nodes[0].text_fields[1].value, replacement);
+}
+
+#[test]
+fn duplicate_node_preserves_call_and_offsets_literal_position() {
+    let source = "#graph(\n n(1.00, -2, <a>, [Alpha], fill: red), // describes a\n n(30, 20, <b>, [Beta]),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    let changed =
+        edit::apply(source, &diagram, &Command::DuplicateNode { id: "a".into() }).unwrap();
+    assert!(changed.contains("n(11, 8, <a-copy>, [Alpha], fill: red)"));
+    let comment = changed.find("// describes a").unwrap();
+    let copy = changed.find("<a-copy>").unwrap();
+    assert!(
+        comment < copy,
+        "the source comment must remain with the original node"
+    );
+    let parsed = model::parse(&changed, None).unwrap();
+    assert_eq!(parsed.nodes.len(), 3);
+    assert_eq!(parsed.nodes[1].id, "a-copy");
+}
+
+#[test]
+fn add_edge_uses_named_nodes_and_validated_arrow() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#studio.diagram(\n studio.node((0mm, 0mm), [A], name: <a>),\n studio.node((20mm, 0mm), [B], name: <b>),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::AddEdge {
+            from: "a".into(),
+            to: "b".into(),
+            label: Some("review".into()),
+            arrow: "both".into(),
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("studio.edge(<a>, <b>, \"<->\", label: \"review\")"));
+    assert_eq!(model::parse(&changed, None).unwrap().edges.len(), 1);
+
+    let bad = Command::AddEdge {
+        from: "a".into(),
+        to: "b".into(),
+        label: None,
+        arrow: "Typst code".into(),
+    };
+    assert!(edit::apply(source, &diagram, &bad).is_err());
+}
+
+#[test]
+fn studio_and_fletcher_node_presets_insert_only_into_matching_diagrams() {
+    let studio = "#import \"@local/cetz-studio:0.1.0\" as studio\n#studio.diagram(\n studio.node((0mm, 0mm), [A], name: <a>),\n)";
+    let diagram = model::parse(studio, None).unwrap();
+    let changed = edit::apply(
+        studio,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "studio-card".into(),
+            x: 20.0,
+            y: 15.0,
+            name: Some("decision".into()),
+            text: Some("Review".into()),
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("studio.card((20mm, -15mm), \"Review\", body: [], name: <decision>)"));
+
+    let fletcher = "#import \"@preview/fletcher:0.5.8\" as f\n#f.diagram(\n f.node((0mm, 0mm), [A], name: <a>),\n)";
+    let diagram = model::parse(fletcher, None).unwrap();
+    let changed = edit::apply(
+        fletcher,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "fletcher-diamond".into(),
+            x: 12.0,
+            y: -8.0,
+            name: None,
+            text: None,
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("shape: f.shapes.diamond"));
+    assert!(edit::apply(
+        fletcher,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "studio-node".into(),
+            x: 0.0,
+            y: 0.0,
+            name: None,
+            text: None,
+        },
+    )
+    .is_err());
+
+    let mixed = "#import \"@preview/fletcher:0.5.8\" as f\n#import \"@local/cetz-studio:0.1.0\" as studio\n#f.diagram(\n f.node((0mm, 0mm), [A], name: <a>), // keep this comment\n debug: false,\n)";
+    let mut current = mixed.to_string();
+    for (index, primitive) in [
+        "fletcher-rect",
+        "fletcher-ellipse",
+        "fletcher-diamond",
+        "studio-node",
+        "studio-card",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let diagram = model::parse(&current, None).unwrap();
+        assert!(diagram
+            .insert_primitives
+            .iter()
+            .any(|item| item == primitive));
+        current = edit::apply(
+            &current,
+            &diagram,
+            &Command::InsertNode {
+                primitive: primitive.into(),
+                x: 20.0 + index as f64 * 10.0,
+                y: 10.0,
+                name: None,
+                text: Some(format!("item {index}")),
+            },
+        )
+        .unwrap();
+    }
+    assert_eq!(model::parse(&current, None).unwrap().nodes.len(), 6);
+    let comment = current.find("// keep this comment").unwrap();
+    let first_inserted = current.find("<rectangle>").unwrap();
+    let named_option = current.find("debug: false").unwrap();
+    assert!(comment < first_inserted && first_inserted < named_option);
+}
+
+#[test]
+fn gallery_requires_a_unique_unshadowed_import_alias() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let studio = (: )\n#diagram(node((0mm, 0mm), [A], name: <a>))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+    assert!(diagram
+        .insertion_reason
+        .as_deref()
+        .unwrap()
+        .contains("explicit"));
+}
+
+#[test]
+fn delete_edge_preserves_nodes_named_options_and_comments() {
+    let source = "#graph(\n n(1, 2, <a>, [A]),\n n(3, 4, <b>, [B]),\n edge(<a>, <b>, \"->\"), // edge explanation\n debug: false,\n)";
+    let diagram = model::parse(source, None).unwrap();
+    let changed =
+        edit::apply(source, &diagram, &Command::DeleteEdge { edge: "e0".into() }).unwrap();
+    assert!(changed.contains("// edge explanation"));
+    assert!(changed.contains("debug: false"));
+    let reparsed = model::parse(&changed, None).unwrap();
+    assert_eq!(reparsed.nodes.len(), 2);
+    assert!(reparsed.edges.is_empty());
+}
+
+#[test]
+fn delete_node_requires_explicit_cascade_and_removes_attached_edges_once() {
+    let source = "#graph(\n n(1, 2, <a>, [A]), // node explanation\n n(3, 4, <b>, [B]),\n edge(<a.east>, <b>, \"->\"),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.nodes[0].attached_edges, 1);
+    let error = edit::apply(
+        source,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: false,
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("cascade: true"));
+
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("// node explanation"));
+    assert!(changed.contains("<b>"));
+    assert!(!changed.contains("<a>"));
+    let reparsed = model::parse(&changed, None).unwrap();
+    assert_eq!(reparsed.nodes.len(), 1);
+    assert!(reparsed.edges.is_empty());
+}
+
+#[test]
+fn node_deletion_refuses_opaque_references_and_the_final_node() {
+    let opaque = "#graph(n(1, 2, <a>, [A]), n(3, 4, <b>, [B]), if true { edge(<a>, <b>, \"->\") })";
+    let diagram = model::parse(opaque, None).unwrap();
+    assert!(diagram.opaque_references);
+    assert!(diagram.nodes.iter().all(|node| !node.deletable));
+    let error = edit::apply(
+        opaque,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("may reference"));
+
+    let single = "#graph(n(1, 2, <a>, [A]))";
+    let diagram = model::parse(single, None).unwrap();
+    assert_eq!(
+        diagram.nodes[0].delete_reason.as_deref().unwrap(),
+        "The final recognized node cannot be deleted because the editor requires a non-empty graph"
+    );
+    assert!(edit::apply(
+        single,
+        &diagram,
+        &Command::DeleteNode {
+            id: "a".into(),
+            cascade: true,
+        },
+    )
+    .is_err());
+}
+
+#[test]
+fn nested_alias_shadowing_disables_gallery_insertion() {
+    let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#{ let studio = (:); studio.diagram(studio.node((0mm, 0mm), [A], name: <a>)) }";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram.insert_primitives.is_empty());
+    assert!(edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "studio-node".into(),
+            x: 10.0,
+            y: 10.0,
+            name: None,
+            text: None,
+        },
     )
     .is_err());
 }

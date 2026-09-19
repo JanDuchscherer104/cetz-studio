@@ -58,7 +58,10 @@ and explicit parameters. No bulk migration of those sources is performed.
 | Paths | Existing waypoints, ports, label segment/fraction | Proven direct Fletcher literals |
 | Style | Fill, stroke width/color, opacity, text size | Declared values; no automatic inherited-theme rewrites |
 | Generated figures | Radius, spacing, scale, visibility | Declared parameters preserve computed relationships |
-| Future structural editing | Add/remove nodes and route vertices, automatic routing, groups | Not implemented in 0.1 |
+| Content | Node titles, card bodies, edge labels as Typst expressions | One selected argument, syntax checked and compiled; literal-only plain-text shortcut |
+| Structural edits | Duplicate nodes, add edges, insert gallery presets | Recognized single-page Fletcher graph; existing imports |
+| Deletion | Nodes with explicit attached-edge confirmation; individual edges | Proven references, one undo transaction; final node remains protected |
+| Future structural editing | Route vertices, automatic routing, groups | Not implemented |
 
 Numbers, lengths, hex colors, and booleans provide the initial control interface.
 Enums, gradients, arbitrary rich text, direct shape handles, and angle-specific
@@ -104,3 +107,15 @@ One repository contains the companion application and importable Typst package.
 CI targets Ubuntu/macOS; configured jobs are not passing evidence. Report local
 Linux and hosted platform results separately. Pin compiler/packages and supply
 fonts/assets. Universe submission is distinct from GitHub publication.
+
+## Project navigation
+
+The project module owns bounded file discovery, path containment, and lazy
+compatibility observations. The active source session continues to own drafts,
+history, compilation, and saves. File switches advance the revision and session
+identity; stale browser requests cannot mutate the newly opened source.
+
+The browser checks files sequentially on request and displays the actual
+capabilities. It does not infer editability from an import name alone. Cached
+checks are not dependency-aware; Refresh invalidates them. Hidden/generated
+directories and symlinks are excluded from project discovery.
