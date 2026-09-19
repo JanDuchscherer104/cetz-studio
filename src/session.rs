@@ -29,6 +29,7 @@ pub struct Snapshot {
     pub source: String,
     pub diagram: Option<Diagram>,
     pub parameters: Vec<Parameter>,
+    pub routing: Vec<crate::routing::Capability>,
     pub mode: Mode,
     pub capabilities: Capabilities,
     pub warnings: Vec<String>,
@@ -166,6 +167,10 @@ impl Session {
     pub fn edit(&mut self, expected: u64, command: edit::Command) -> Result<()> {
         self.check_revision(expected)?;
         let parameter_command = matches!(&command, edit::Command::SetParameter { .. });
+        let routing_command = matches!(&command, edit::Command::RouteEdges { .. });
+        if routing_command {
+            self.check_disk()?;
+        }
         if !parameter_command {
             ensure!(
                 self.graph_gestures_enabled(),
@@ -197,6 +202,10 @@ impl Session {
                 rendered.instrumented && rendered.pages.len() == 1,
                 "Graph edit could not be verified against an instrumented single-page preview"
             );
+        }
+        if routing_command {
+            // An external source edit during compilation also invalidates the proposal.
+            self.check_disk()?;
         }
         self.undo.push(self.source.clone());
         if self.undo.len() > 64 {
@@ -300,6 +309,11 @@ impl Session {
             source: self.source.clone(),
             diagram: self.diagram.clone(),
             parameters: self.parameters.clone(),
+            routing: crate::routing::capabilities(
+                &self.source,
+                self.diagram.as_ref(),
+                graph_gestures,
+            ),
             mode,
             capabilities,
             warnings,

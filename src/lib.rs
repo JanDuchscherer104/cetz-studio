@@ -5,4 +5,5 @@ pub mod model;
 pub mod parameters;
 pub mod project;
 pub mod render;
+pub mod routing;
 pub mod session;

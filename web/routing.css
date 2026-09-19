@@ -1,0 +1,10 @@
+/* Optional routing controls share the existing inspector typography. */
+#routing-panel { margin: 14px; padding: 12px; border: 1px solid #d8dde4; border-radius: 6px; }
+#routing-panel summary { cursor: pointer; font-weight: 600; }
+#routing-panel > label { display: block; margin: 10px 0; font-size: 12px; }
+#routing-panel select, #route-clearance { display: block; width: 100%; margin-top: 5px; }
+#routing-panel button { margin-top: 6px; }
+#route-choices { max-height: 150px; overflow: auto; font-size: 11px; }
+#route-choices label { display: flex; align-items: start; gap: 5px; margin: 6px 0; overflow-wrap: anywhere; }
+#route-choices input { flex: none; width: auto; }
+#route-status { overflow-wrap: anywhere; }

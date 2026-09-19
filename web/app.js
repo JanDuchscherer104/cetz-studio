@@ -116,7 +116,7 @@
   }
   function drawOverlay(){
     const overlay=$('overlay');overlay.replaceChildren();if(!app.snapshot||!app.basis)return;
-    const d=diagram(),z=app.zoom;
+    const d=diagram(),z=app.zoom;app.routing?.draw(overlay);
     for(const e of d.edges){
       const points=app.edgePoints.get(e.id);if(!points)continue;
       const hit=el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'edge-hit','stroke-width':10/z,'data-edge':e.id});
@@ -230,6 +230,7 @@
     root.append(label,input,apply,html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
   function renderInspector(){
+    app.routing?.sync();
     const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
     if(sel?.kind==='parameter'){
       const item=parameters().find(p=>p.id===sel.id);
@@ -267,6 +268,7 @@
     }
   }
   function refresh(snapshot){
+    app.routing?.changed(snapshot);
     app.snapshot=snapshot;$('filename').textContent=snapshot.filename;$('dirty').textContent=snapshot.dirty?'Unsaved layout':'Source unchanged';$('dirty').className=`pill${snapshot.dirty?' modified':''}`;
     $('revision').textContent=`Revision ${snapshot.revision}`;
     const pages=snapshot.pages?.length?snapshot.pages:snapshot.svg?[snapshot.svg]:[];
@@ -294,9 +296,10 @@
   }
   async function post(path,body={}){
     if(app.busy)return;
+    app.routing?.invalidate('Edit started; route proposal discarded.');
     app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
     try{
-      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({revision:app.snapshot.revision,...body})});
+      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.snapshot.session_id,revision:app.snapshot.revision,...body})});
       const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Request failed'),{snapshot:data.snapshot});
       app.busy=false;refresh(data.snapshot);
       notify(path==='/api/save'?(data.backup?`Saved source. Backup: ${data.backup}`:'No source changes to save.'):(app.fixture?'UI fixture updated. This did not execute Rust or Typst.':'Layout compiled. Original source stays unchanged until Save.'));
@@ -328,6 +331,7 @@
   window.addEventListener('beforeunload',e=>{if(app.snapshot?.dirty&&!app.fixture){e.preventDefault();e.returnValue='';}});
   new ResizeObserver(()=>{if(app.svg&&!app.drag)fit();}).observe($('viewport'));
   if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
+  app.routing=window.CetzRouting?.install({app,diagram,svgToWorld,worldToSvg,el,post,notify,drawOverlay});
   fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;refresh(data.snapshot);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
   // Read-only observation seam for the browser smoke test; never accepts edits.
   window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});

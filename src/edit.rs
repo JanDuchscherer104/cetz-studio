@@ -33,6 +33,9 @@ pub enum Command {
         segment: usize,
         fraction: f64,
     },
+    RouteEdges {
+        routes: Vec<crate::routing::Route>,
+    },
     SetParameter {
         id: String,
         value: Value,
@@ -84,7 +87,7 @@ fn scalar_patch(scalar: &Scalar, mm: f64, patches: &mut Vec<Patch>) -> Result<()
     Ok(())
 }
 
-fn point_patches(point: &Point, x: f64, y: f64, patches: &mut Vec<Patch>) -> Result<()> {
+pub(crate) fn point_patches(point: &Point, x: f64, y: f64, patches: &mut Vec<Patch>) -> Result<()> {
     ensure!(point.editable, "Elastic/computed coordinates are read-only");
     let axes = point
         .axes
@@ -271,6 +274,9 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
                     });
                 }
             }
+        }
+        Command::RouteEdges { routes } => {
+            patches.extend(crate::routing::patches(source, diagram, routes)?);
         }
         Command::SetParameter { .. } => bail!("Parameter commands use the parameter interface"),
     }

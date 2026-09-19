@@ -105,7 +105,9 @@ impl AppState {
     }
 
     fn json(&self) -> Value {
-        json!({"session_id":self.session_id,"snapshot":self.session.snapshot(),"project":self.project_snapshot()})
+        let mut value = json!({"session_id":self.session_id,"snapshot":self.session.snapshot(),"project":self.project_snapshot()});
+        value["snapshot"]["session_id"] = json!(self.session_id);
+        value
     }
 
     fn check_identity(&self, session_id: Option<u64>) -> Result<()> {
@@ -374,6 +376,18 @@ fn main() -> Result<()> {
             (&Method::Get, "/style.css") => {
                 Some(("text/css; charset=utf-8", include_str!("../web/style.css")))
             }
+            (&Method::Get, "/routing-ui.js") => Some((
+                "text/javascript; charset=utf-8",
+                include_str!("../web/routing-ui.js"),
+            )),
+            (&Method::Get, "/routing-worker.js") => Some((
+                "text/javascript; charset=utf-8",
+                include_str!("../web/routing-worker.js"),
+            )),
+            (&Method::Get, "/routing.css") => Some((
+                "text/css; charset=utf-8",
+                include_str!("../web/routing.css"),
+            )),
             (&Method::Get, "/favicon.ico") => Some(("image/x-icon", "")),
             _ => None,
         };
