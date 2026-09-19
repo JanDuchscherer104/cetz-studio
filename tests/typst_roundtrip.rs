@@ -145,3 +145,127 @@ fn mismatched_wrapper_falls_back_and_graph_command_is_rejected() {
         .diagnostics
         .contains("Graph gestures are unavailable"));
 }
+
+#[test]
+#[ignore = "Requires installed Typst and cached CeTZ 0.5.2/Fletcher 0.5.8 packages"]
+fn actual_all_gallery_presets_compile_inside_fletcher_diagram() {
+    use std::io::Write;
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut file = tempfile::Builder::new()
+        .prefix(".gallery-")
+        .suffix(".typ")
+        .tempfile_in(&root)
+        .unwrap();
+    let source = r#"#import "@preview/fletcher:0.5.8" as f
+#import "./typst/cetz-studio/lib.typ" as studio
+#set page(width: auto, height: auto, margin: 4mm)
+#f.diagram(
+  f.node((0mm, 0mm), [Start], name: <start>), // trailing comment is preserved
+  f.node((15mm, 0mm), [End], name: <end>),
+  f.edge(<start>, <end>, "->", [Flow]),
+  debug: false,
+)
+"#;
+    file.write_all(source.as_bytes()).unwrap();
+    file.flush().unwrap();
+    let mut session = Session::open(file.path().into(), compiler(root), None).unwrap();
+    session.render().unwrap();
+    session
+        .edit(
+            0,
+            Command::SetEdgeText {
+                edge: "e0".into(),
+                field: "label".into(),
+                text: "first label".into(),
+            },
+        )
+        .unwrap();
+    session
+        .edit(
+            1,
+            Command::SetEdgeText {
+                edge: "e0".into(),
+                field: "label".into(),
+                text: "second $label [literal]".into(),
+            },
+        )
+        .unwrap();
+    session
+        .edit(
+            2,
+            Command::SetNodeText {
+                id: "start".into(),
+                field: "title".into(),
+                text: "Start #1 [$5]\nsecond line".into(),
+            },
+        )
+        .unwrap();
+    session
+        .edit(
+            3,
+            Command::SetNodeSource {
+                id: "start".into(),
+                field: "title".into(),
+                source: "[Start $alpha^2$]".into(),
+            },
+        )
+        .unwrap();
+    session
+        .edit(
+            4,
+            Command::SetEdgeSource {
+                edge: "e0".into(),
+                field: "label".into(),
+                source: "[$x^2 + y^2$]".into(),
+            },
+        )
+        .unwrap();
+    session
+        .edit(5, Command::DuplicateNode { id: "start".into() })
+        .unwrap();
+    session
+        .edit(
+            6,
+            Command::AddEdge {
+                from: "start-copy".into(),
+                to: "end".into(),
+                label: Some("copied route".into()),
+                arrow: "forward".into(),
+            },
+        )
+        .unwrap();
+
+    for (revision, primitive) in [
+        "fletcher-rect",
+        "fletcher-ellipse",
+        "fletcher-diamond",
+        "studio-node",
+        "studio-card",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        session
+            .edit(
+                revision as u64 + 7,
+                Command::InsertNode {
+                    primitive: primitive.into(),
+                    x: 20.0 + revision as f64 * 15.0,
+                    y: 10.0,
+                    name: None,
+                    text: Some(format!("item {revision}")),
+                },
+            )
+            .unwrap();
+    }
+    let snapshot = session.snapshot();
+    let diagram = snapshot.diagram.unwrap();
+    assert_eq!(diagram.nodes.len(), 8);
+    assert_eq!(diagram.edges.len(), 2);
+    assert!(snapshot.source.contains("label: [$x^2 + y^2$]"));
+    assert!(snapshot.source.contains("[Start $alpha^2$]"));
+    assert!(snapshot.source.contains("<start-copy>"));
+    assert!(snapshot.source.contains("trailing comment is preserved"));
+    assert_eq!(fs::read_to_string(file.path()).unwrap(), source);
+}
