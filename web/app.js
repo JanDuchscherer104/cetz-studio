@@ -8,7 +8,8 @@
     zoom:1, pan:{x:0,y:0}, size:{w:600,h:400}, svg:null, markers:new Map(),
     nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
-    mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE};
+    mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
+    project:null, sessionId:null, copiedNode:null, pendingProjectAction:null};
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
   const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -17,9 +18,53 @@
   const diagram = () => app.snapshot?.diagram || {nodes:[], edges:[], warnings:[]};
   const parameters = () => app.snapshot?.parameters || [];
   const graphGestures = () => app.snapshot?.capabilities?.graph_gestures ?? !!app.snapshot?.diagram;
+  const structuralEdits = () => graphGestures() && !!app.snapshot?.preview_current && !app.mappingError;
   function notify(message, error=false) {
     $('status').textContent=message;
     if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
+  }
+  function applyEnvelope(data){
+    if(data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId){app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;}
+    if(data.session_id!=null)app.sessionId=data.session_id;
+    if(data.project!==undefined)app.project=data.project;
+    if(data.snapshot)refresh(data.snapshot);else renderProject();
+  }
+  function capabilityBadge(file){
+    if(file.status==='error')return {text:'Error',kind:'error',title:file.error||'Compilation failed'};
+    if(file.status!=='ready')return {text:'Unchecked',kind:'unchecked',title:'Select Check to compile this file'};
+    if(file.mode==='graph_editing'||file.capabilities?.graph_gestures)return {text:'Layout',kind:'layout',title:'Layout and recognized graph edits'};
+    if(file.mode==='parameter_editing'||file.capabilities?.parameters)return {text:'Controls',kind:'controls',title:'Declared controls are editable'};
+    return {text:'Preview',kind:'preview',title:'Renders successfully; source structure is read-only'};
+  }
+  function projectTree(files){
+    const root={dirs:new Map(),files:[]};
+    for(const file of files){
+      const parts=file.path.split('/').filter(Boolean),name=parts.pop()||file.name;let at=root;
+      for(const part of parts){if(!at.dirs.has(part))at.dirs.set(part,{dirs:new Map(),files:[]});at=at.dirs.get(part);}
+      at.files.push({...file,name:file.name||name});
+    }
+    return root;
+  }
+  function renderProjectBranch(node,container,query,depth=0){
+    for(const [name,child] of [...node.dirs].sort(([a],[b])=>a.localeCompare(b))){
+      const holder=html('details','project-folder');holder.open=depth<1||!!query;
+      holder.append(html('summary',null,name));const children=html('div','project-children');renderProjectBranch(child,children,query,depth+1);holder.append(children);
+      if(children.childElementCount)container.append(holder);
+    }
+    for(const file of node.files.sort((a,b)=>a.name.localeCompare(b.name))){
+      if(query&&!file.path.toLowerCase().includes(query))continue;
+      const badge=capabilityBadge(file),button=html('button',`project-file${file.path===app.project?.active_file?' active':''}`);
+      button.dataset.projectFile=file.path;button.title=`${file.path} · ${badge.title}`;
+      button.append(html('span','project-file-name',file.name+(file.dirty?' •':'')),html('span',`file-badge ${badge.kind}`,badge.text));
+      button.onclick=()=>requestProjectAction({path:'/api/project/open',body:{path:file.path},label:`Open ${file.name}`});container.append(button);
+    }
+  }
+  function renderProject(){
+    const root=$('project-files');root.replaceChildren();if(document.activeElement!==$('project-root')&&app.project?.root)$('project-root').value=app.project.root;
+    if(!app.project?.files){root.append(html('p','project-empty',app.fixture?'Project browsing is unavailable in the browser-only fixture.':'This server does not expose a project. Start Cetz Studio with a project root to browse Typst files.'));$('check-project').disabled=true;return;}
+    $('check-project').disabled=app.busy||!app.project.files.some(f=>f.status==='unchecked');
+    const query=$('project-filter').value.trim().toLowerCase(),tree=projectTree(app.project.files);renderProjectBranch(tree,root,query);
+    if(!root.childElementCount)root.append(html('p','project-empty','No matching Typst files.'));
   }
   function snap(v,event={}) {return $('snap').checked&&!event.altKey?Math.round(v/Number($('grid-step').value))*Number($('grid-step').value):v;}
   function screenToSvg(x,y) {
@@ -229,6 +274,19 @@
     };
     root.append(label,input,apply,html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
+  function renderTextFields(root,item,kind){
+    const fields=item.text_fields||[];if(!fields.length)return;
+    root.append(html('label','field-label',kind==='node'?'Text content':'Edge text'));
+    for(const field of fields){
+      const wrap=html('div','text-field'),label=html('label',null,field.id[0].toUpperCase()+field.id.slice(1)),input=html('textarea');
+      input.id=`${kind}-${field.id}-text`;input.value=field.value??'';input.disabled=app.busy||!field.editable;label.htmlFor=input.id;
+      const apply=html('button','fullwidth','Apply text');apply.id=`apply-${kind}-${field.id}`;apply.disabled=input.disabled;
+      apply.onclick=()=>post('/api/edit',{command:kind==='node'?{kind:'set_node_text',id:item.id,field:field.id,text:input.value}:{kind:'set_edge_text',edge:item.id,field:field.id,text:input.value}});
+      wrap.append(label,input,apply);
+      if(field.reason)wrap.append(html('p','read-only-reason',field.reason));
+      root.append(wrap);
+    }
+  }
   function renderInspector(){
     const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
     if(sel?.kind==='parameter'){
@@ -240,6 +298,7 @@
     const item=(sel.kind==='node'?d.nodes:d.edges).find(n=>n.id===sel.id);if(!item){app.selection=null;renderInspector();return;}
     root.append(html('div','selection-type',sel.kind==='node'?'NODE':'CONNECTION'),html('h2','selection-name',sel.kind==='node'?item.id:item.id.toUpperCase()),html('div','source-line',`Source line ${item.line} · ${sel.kind==='node'?item.kind:'Fletcher edge'}`));
     if(sel.kind==='node'){
+      renderTextFields(root,item,'node');
       if(item.position){
         root.append(html('label','field-label','Position · millimetres'));
         const row=html('div','coordinate-row');row.append(inputNumber('node-x',item.position.x,'X'),inputNumber('node-y',item.position.y,'Y'));root.append(row);
@@ -248,8 +307,14 @@
         apply.addEventListener('click',()=>{const x=Number($('node-x').value),y=Number($('node-y').value);if(Number.isFinite(x)&&Number.isFinite(y))post('/api/edit',{command:{kind:'move_node',id:item.id,x,y}});});root.append(apply);
       }
       root.append(html('p','field-note',nodeEditable(item)?'Y increases downwards. Shift-drag locks one axis. Alt temporarily disables snapping.':(app.locked.has(item.id)?'Measured position does not match the configured wrapper. Editing is locked; check --y-scale or the n() convention.':'This node uses unsupported or elastic coordinates and is read-only.')));
-      if(item.title)root.append(html('label','field-label','Source content'),html('p','inspector-hint',item.title));
+      if(!item.text_fields?.length&&item.title)root.append(html('label','field-label','Source content'),html('p','inspector-hint',item.title));
+      const actions=html('div','inspector-actions'),copy=html('button',null,'Copy node'),paste=html('button',null,'Paste copy'),duplicate=html('button',null,'Duplicate');
+      copy.id='copy-node';paste.id='paste-node';duplicate.id='duplicate-node';copy.disabled=!structuralEdits()||app.busy;duplicate.disabled=copy.disabled;paste.disabled=copy.disabled||!app.copiedNode||!d.nodes.some(n=>n.id===app.copiedNode);
+      copy.onclick=()=>{app.copiedNode=item.id;notify(`${item.id} copied. Paste duplicates it in this diagram.`);renderInspector();};
+      paste.onclick=()=>duplicateNode(app.copiedNode);duplicate.onclick=()=>duplicateNode(item.id);actions.append(copy,paste,duplicate);root.append(actions);
+      if(app.copiedNode===item.id)root.append(html('p','field-note','Copied internally · Ctrl/Cmd+V duplicates this node.'));
     }else{
+      renderTextFields(root,item,'edge');
       root.append(html('p','inspector-hint',edgeName(item)),html('label','field-label','Attachment ports'));
       for(const end of ['start','end']){
         const v=end==='start'?item.vertices[0]:item.vertices.at(-1),row=html('div','property-row'),selectEl=html('select');
@@ -265,6 +330,43 @@
         const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
       }
     }
+  }
+  function showModal(id){
+    $('modal-backdrop').hidden=false;
+    for(const modal of $('modal-backdrop').querySelectorAll('.modal'))modal.hidden=modal.id!==id;
+    $('modal-backdrop').querySelector(`#${id} button:not(:disabled),#${id} input:not(:disabled),#${id} select:not(:disabled)`)?.focus();
+  }
+  function closeModal(){
+    $('modal-backdrop').hidden=true;for(const modal of $('modal-backdrop').querySelectorAll('.modal'))modal.hidden=true;
+  }
+  async function duplicateNode(id){
+    const before=new Set(diagram().nodes.map(n=>n.id)),data=await post('/api/edit',{command:{kind:'duplicate_node',id}});
+    const created=data?.snapshot?.diagram?.nodes?.find(n=>!before.has(n.id));if(created)select('node',created.id);
+  }
+  function viewCenterWorld(){
+    if(!app.basis||!app.svg)return {x:50,y:50};
+    const box=$('viewport').getBoundingClientRect();
+    try{return pointerWorld({clientX:box.left+box.width/2,clientY:box.top+box.height/2});}catch{return {x:50,y:50};}
+  }
+  function openGallery(){
+    if(!structuralEdits()){notify('Node insertion needs a recognized, current Fletcher diagram.',true);return;}
+    showModal('gallery-modal');
+  }
+  function openEdgeCreator(){
+    const nodes=diagram().nodes;if(!structuralEdits()||nodes.length<2){notify('Adding an edge needs at least two recognized named nodes.',true);return;}
+    for(const id of ['edge-from','edge-to']){$(id).replaceChildren();nodes.forEach(n=>{const o=html('option',null,n.id);o.value=n.id;$(id).append(o);});}
+    if(app.selection?.kind==='node')$('edge-from').value=app.selection.id;
+    $('edge-to').selectedIndex=Math.min(1,nodes.length-1);$('new-edge-label').value='';showModal('edge-modal');
+  }
+  async function requestProjectAction(action){
+    if(app.snapshot?.dirty&&!action.body.discard){app.pendingProjectAction=action;showModal('dirty-modal');return;}
+    closeModal();await post(action.path,action.body,{message:action.label,projectAction:true});
+  }
+  async function checkVisibleFiles(){
+    if(!app.project)return;
+    const query=$('project-filter').value.trim().toLowerCase(),files=app.project.files.filter(f=>f.status==='unchecked'&&(!query||f.path.toLowerCase().includes(query)));
+    for(const file of files){const data=await post('/api/project/check',{path:file.path},{message:`Checked ${file.name}`,quiet:true});if(!data)break;}
+    notify(files.length?`Compatibility checked for ${files.length} file${files.length===1?'':'s'}.`:'No unchecked files in this view.');
   }
   function refresh(snapshot){
     app.snapshot=snapshot;$('filename').textContent=snapshot.filename;$('dirty').textContent=snapshot.dirty?'Unsaved layout':'Source unchanged';$('dirty').className=`pill${snapshot.dirty?' modified':''}`;
@@ -290,17 +392,19 @@
     $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
-    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderList();renderInspector();drawOverlay();
+    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();drawOverlay();
+    $('add-node').disabled=app.busy||!structuralEdits();$('add-edge').disabled=app.busy||!structuralEdits()||diagram().nodes.length<2;
   }
-  async function post(path,body={}){
+  async function post(path,body={},options={}){
     if(app.busy)return;
     app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
     try{
-      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({revision:app.snapshot.revision,...body})});
-      const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Request failed'),{snapshot:data.snapshot});
-      app.busy=false;refresh(data.snapshot);
-      notify(path==='/api/save'?(data.backup?`Saved source. Backup: ${data.backup}`:'No source changes to save.'):(app.fixture?'UI fixture updated. This did not execute Rust or Typst.':'Layout compiled. Original source stays unchanged until Save.'));
-    }catch(e){app.busy=false;if(e.snapshot)refresh(e.snapshot);else refresh(app.snapshot);notify(e.message,true);}
+      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,...body})});
+      const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Request failed'),{envelope:data});
+      app.busy=false;applyEnvelope(data);
+      if(!options.quiet)notify(options.message||(path==='/api/save'?(data.backup?`Saved source. Backup: ${data.backup}`:'No source changes to save.'):(app.fixture?'UI fixture updated. This did not execute Rust or Typst.':'Source edit compiled. Original source stays unchanged until Save.')));
+      return data;
+    }catch(e){app.busy=false;if(e.envelope)applyEnvelope(e.envelope);else refresh(app.snapshot);notify(e.message,true);return null;}
     finally{$('busy-overlay').hidden=true;}
   }
   $('viewport').addEventListener('pointerdown',e=>{if(!app.busy&&((app.space&&e.button===0)||e.button===1)){e.preventDefault();e.stopPropagation();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}},{capture:true});
@@ -309,6 +413,30 @@
   $('viewport').addEventListener('wheel',e=>{e.preventDefault();const b=$('viewport').getBoundingClientRect();zoomBy(Math.exp(-e.deltaY*.001),e.clientX-b.left,e.clientY-b.top);},{passive:false});
   $('fit').onclick=fit;$('zoom-in').onclick=()=>zoomBy(1.2);$('zoom-out').onclick=()=>zoomBy(1/1.2);
   $('undo').onclick=()=>post('/api/undo');$('redo').onclick=()=>post('/api/redo');$('render').onclick=()=>post('/api/render');$('save').onclick=()=>post('/api/save');
+  $('add-node').onclick=openGallery;$('add-edge').onclick=openEdgeCreator;
+  const primitives=[
+    ['fletcher-rect','Fletcher rectangle','A standard rectangular Fletcher node.','rect'],
+    ['fletcher-ellipse','Fletcher ellipse','A rounded elliptical Fletcher node.','ellipse'],
+    ['fletcher-diamond','Fletcher diamond','A decision-shaped Fletcher node.','diamond'],
+    ['studio-node','Studio node','A themed general-purpose Studio node.','studio'],
+    ['studio-card','Studio card','A themed title and body card.','card']
+  ];
+  for(const [id,name,description,shape] of primitives){
+    const button=html('button','primitive-card');button.dataset.primitive=id;
+    const preview=html('span',`primitive-preview ${shape}`);preview.setAttribute('aria-hidden','true');button.append(preview,html('strong',null,name),html('span',null,description));
+    button.onclick=async()=>{const before=new Set(diagram().nodes.map(n=>n.id)),p=viewCenterWorld();closeModal();const data=await post('/api/edit',{command:{kind:'insert_node',primitive:id,x:snap(p.x),y:snap(p.y)}});const created=data?.snapshot?.diagram?.nodes?.find(n=>!before.has(n.id));if(created)select('node',created.id);};
+    $('primitive-gallery').append(button);
+  }
+  for(const button of document.querySelectorAll('.modal-close'))button.onclick=closeModal;
+  $('modal-backdrop').addEventListener('pointerdown',e=>{if(e.target===$('modal-backdrop'))closeModal();});
+  $('create-edge').onclick=async()=>{const from=$('edge-from').value,to=$('edge-to').value;if(from===to){notify('Choose two different nodes.',true);return;}closeModal();await post('/api/edit',{command:{kind:'add_edge',from,to,label:$('new-edge-label').value.trim()||null,arrow:$('edge-arrow').value}});};
+  $('dirty-cancel').onclick=()=>{app.pendingProjectAction=null;closeModal();};
+  $('dirty-discard').onclick=()=>{const action=app.pendingProjectAction;app.pendingProjectAction=null;if(action)requestProjectAction({...action,body:{...action.body,discard:true}});};
+  $('dirty-save').onclick=async()=>{const action=app.pendingProjectAction;const saved=await post('/api/save');if(saved&&action){app.pendingProjectAction=null;await requestProjectAction(action);}else if(!saved)showModal('dirty-modal');};
+  $('project-filter').addEventListener('input',renderProject);$('check-project').onclick=checkVisibleFiles;
+  $('refresh-project').onclick=()=>{if(app.fixture)renderProject();else post('/api/project/refresh',{}, {message:'Project files refreshed.'});};
+  $('open-project').onclick=()=>{const path=$('project-root').value.trim();if(path)requestProjectAction({path:'/api/project/root',body:{path},label:'Project opened'});};
+  $('project-root').addEventListener('keydown',e=>{if(e.key==='Enter')$('open-project').click();});
   $('search').addEventListener('input',renderList);
   function showList(kind){app.list=kind;for(const tab of ['nodes','edges','parameters'])$(`${tab}-tab`).classList.toggle('active',kind===tab);renderList();}
   for(const kind of ['nodes','edges','parameters'])$(`${kind}-tab`).onclick=()=>showList(kind);
@@ -316,10 +444,12 @@
   for(const tab of ['diff','diagnostics'])$(`${tab}-tab`).onclick=()=>{$('diff').hidden=tab!=='diff';$('diagnostics').hidden=tab!=='diagnostics';$('diff-tab').classList.toggle('active',tab==='diff');$('diagnostics-tab').classList.toggle('active',tab==='diagnostics');};
   $('download').onclick=()=>{if(!app.snapshot)return;const u=URL.createObjectURL(new Blob([app.snapshot.source],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=app.snapshot.filename.replace(/\.typ$/,'.draft.typ');a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
+    if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const redo=e.shiftKey;if(!$(redo?'redo':'undo').disabled)post(redo?'/api/redo':'/api/undo');return;}
     if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&app.selection?.kind==='node'){e.preventDefault();app.copiedNode=app.selection.id;notify(`${app.copiedNode} copied. Paste duplicates it in this diagram.`);renderInspector();return;}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&app.copiedNode){e.preventDefault();if(diagram().nodes.some(n=>n.id===app.copiedNode))duplicateNode(app.copiedNode);else{app.copiedNode=null;notify('The copied node is not in this diagram.',true);}return;}
     if(e.code==='Space'){e.preventDefault();app.space=true;}
     const step=e.shiftKey?5:.5,delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];
     if(delta&&app.selection?.kind==='node'&&!app.busy){const n=diagram().nodes.find(n=>n.id===app.selection.id);if(n&&nodeEditable(n)){e.preventDefault();post('/api/edit',{command:{kind:'move_node',id:n.id,x:n.position.x+delta[0],y:n.position.y+delta[1]}});}}
@@ -328,7 +458,7 @@
   window.addEventListener('beforeunload',e=>{if(app.snapshot?.dirty&&!app.fixture){e.preventDefault();e.returnValue='';}});
   new ResizeObserver(()=>{if(app.svg&&!app.drag)fit();}).observe($('viewport'));
   if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
-  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;refresh(data.snapshot);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
+  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;applyEnvelope(data);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
   // Read-only observation seam for the browser smoke test; never accepts edits.
   window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});
 })();
