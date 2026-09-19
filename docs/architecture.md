@@ -62,11 +62,13 @@ and explicit parameters. No bulk migration of those sources is performed.
 | Content | Node titles, card bodies, edge labels as Typst expressions | One selected argument, syntax checked and compiled; literal-only plain-text shortcut |
 | Structural edits | Duplicate nodes, add edges, insert gallery presets | Recognized single-page Fletcher graph; existing imports |
 | Deletion | Nodes with explicit attached-edge confirmation; individual edges | Proven references, one undo transaction; final node remains protected |
-| Future structural editing | Route vertices, groups | Not implemented |
+| Manual routes | Insert/remove corners; quadratic/cubic Bézier controls | Direct literals; Bézier mode requires Studio edge and diagram wrappers |
+| Future structural editing | Groups and arbitrary CeTZ canvas insertion | Not implemented |
 
 Numbers, lengths, hex colors, and booleans provide the initial control interface.
-Enums, gradients, arbitrary rich text, direct shape handles, and angle-specific
-widgets remain future work. Scientific data and equations are not editor controls.
+Enums, gradients, direct shape handles, and angle-specific widgets remain future
+work. Equations may be edited explicitly through a selected content expression;
+layout commands do not rewrite scientific data or mathematical content.
 
 ## Performance and simplification
 

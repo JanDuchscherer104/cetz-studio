@@ -89,6 +89,21 @@ These commands compile before being adopted and participate in undo/redo.
 The gallery inserts into supported Fletcher diagrams; arbitrary CeTZ canvas
 insertion and cross-file node copying are not implemented.
 
+## Shape a connection
+
+Select an edge and choose **Add corner**, then drag the new handle. Interior
+corners can be removed individually. For `studio.edge` inside `studio.diagram`,
+**Path mode** switches between a polyline and a real quadratic/cubic CeTZ Bézier
+curve. Drag its one or two control handles; switching back retains them as
+corners. Ordinary Fletcher edges retain manual corner editing, with an
+explanation when Bézier mode requires the Studio wrapper.
+
+For obstacle avoidance, **Preview routes** computes routes around measured node
+bounds while keeping nodes fixed. Review the dashed proposal, then **Apply** to
+compile and adopt one undoable change. Choose selected, checked, or all eligible
+edges, up to 32 per proposal. Routing uses the pinned Rust `pathfinding` crate;
+it does not avoid other edges or labels. See [routing details](docs/routing.md).
+
 ## Other figures
 
 For the original literal-node and routed-edge demo:
