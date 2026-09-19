@@ -38,6 +38,18 @@ unsupported control characters are rejected.
   diagram's `insert_primitives` field: Fletcher rectangle, ellipse, and diamond,
   plus Studio node and card when the source has a proven `studio` import alias.
   It accepts optional plain `name` and `text` values but no source code.
+- `delete_edge` removes one recognized direct edge argument. `delete_node`
+  removes one recognized direct node and requires `cascade: true` when named
+  edges are attached; the node and those edges form one compiled edit and one
+  undo step. Snapshot nodes report `attached_edges`, `deletable`, and a specific
+  `delete_reason`.
+
+Node deletion is refused when computed or unsupported graph arguments might
+contain references that the adapter cannot prove safe. The final recognized node
+also remains protected because the current semantic adapter and instrumented
+preview require a non-empty named graph. Edge deletion remains available for
+recognized direct edges. Deletion removes only constructor and comma spans;
+comments and graph-level named options remain in the source.
 
 Primitive availability comes from explicit import aliases. A direct Studio
 import can supply both Studio helpers and `studio.fletcher` shapes inside an

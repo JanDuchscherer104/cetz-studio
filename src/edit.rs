@@ -71,6 +71,13 @@ pub enum Command {
         #[serde(default)]
         text: Option<String>,
     },
+    DeleteEdge {
+        edge: String,
+    },
+    DeleteNode {
+        id: String,
+        cascade: bool,
+    },
     SetParameter {
         id: String,
         value: Value,
@@ -296,6 +303,38 @@ fn append_graph_argument(source: &str, diagram: &Diagram, expression: &str) -> R
         .rposition(|argument| argument.name.is_none())
         .context("Graph has no direct positional insertion point")?;
     insert_after_argument(source, diagram, last_positional, expression)
+}
+
+fn remove_graph_argument(diagram: &Diagram, span: &Span) -> Result<Vec<Patch>> {
+    let index = diagram
+        .call
+        .arguments
+        .iter()
+        .position(|argument| argument.outer_span == *span)
+        .context("Element is not a direct graph argument")?;
+    let limit = diagram
+        .call
+        .arguments
+        .get(index + 1)
+        .map_or(diagram.call.args_close, |argument| {
+            argument.outer_span.start
+        });
+    let mut patches = vec![Patch {
+        span: span.clone(),
+        replacement: String::new(),
+    }];
+    if let Some(comma) = diagram
+        .call
+        .commas
+        .iter()
+        .find(|comma| comma.start >= span.end && comma.end <= limit)
+    {
+        patches.push(Patch {
+            span: comma.clone(),
+            replacement: String::new(),
+        });
+    }
+    Ok(patches)
 }
 
 fn edge_callee(diagram: &Diagram) -> Result<&'static str> {
@@ -707,6 +746,51 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
             };
             patches.extend(append_graph_argument(source, diagram, &expression)?);
         }
+        Command::DeleteEdge { edge: id } => {
+            let edge = diagram
+                .edges
+                .iter()
+                .find(|edge| &edge.id == id)
+                .context("Unknown edge")?;
+            patches.extend(remove_graph_argument(diagram, &edge.call.span)?);
+        }
+        Command::DeleteNode { id, cascade } => {
+            let node = diagram
+                .nodes
+                .iter()
+                .find(|node| &node.id == id)
+                .context("Unknown node")?;
+            ensure!(
+                node.deletable,
+                "{}",
+                node.delete_reason
+                    .as_deref()
+                    .unwrap_or("This node cannot be deleted")
+            );
+            let attached = diagram
+                .edges
+                .iter()
+                .filter(|edge| {
+                    edge.vertices.iter().any(|vertex| match vertex {
+                        Vertex::Anchor { name, .. } => {
+                            endpoint(name, diagram).as_deref() == Some(id)
+                        }
+                        Vertex::Point { .. } => false,
+                    })
+                })
+                .collect::<Vec<_>>();
+            ensure!(
+                *cascade || attached.is_empty(),
+                "Node has {} attached edge(s); retry with cascade: true to delete them in the same undo step",
+                attached.len()
+            );
+            patches.extend(remove_graph_argument(diagram, &node.call.span)?);
+            if *cascade {
+                for edge in attached {
+                    patches.extend(remove_graph_argument(diagram, &edge.call.span)?);
+                }
+            }
+        }
         Command::SetParameter { .. } => bail!("Parameter commands use the parameter interface"),
     }
     let next = apply_patches(source, patches)?;
@@ -734,6 +818,51 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
             ensure!(
                 parsed.edges.len() == diagram.edges.len() + 1,
                 "Edge insertion failed"
+            );
+        }
+        Command::DeleteEdge { .. } => {
+            ensure!(
+                parsed
+                    .nodes
+                    .iter()
+                    .map(|n| &n.id)
+                    .eq(diagram.nodes.iter().map(|n| &n.id)),
+                "Node identity changed unexpectedly"
+            );
+            ensure!(
+                parsed.edges.len() + 1 == diagram.edges.len(),
+                "Edge deletion failed"
+            );
+        }
+        Command::DeleteNode { id, cascade } => {
+            let expected_nodes = diagram
+                .nodes
+                .iter()
+                .filter(|node| &node.id != id)
+                .map(|node| &node.id);
+            ensure!(
+                parsed.nodes.iter().map(|node| &node.id).eq(expected_nodes),
+                "Node deletion changed unrelated identities"
+            );
+            let removed_edges = if *cascade {
+                diagram
+                    .edges
+                    .iter()
+                    .filter(|edge| {
+                        edge.vertices.iter().any(|vertex| match vertex {
+                            Vertex::Anchor { name, .. } => {
+                                endpoint(name, diagram).as_deref() == Some(id)
+                            }
+                            Vertex::Point { .. } => false,
+                        })
+                    })
+                    .count()
+            } else {
+                0
+            };
+            ensure!(
+                parsed.edges.len() + removed_edges == diagram.edges.len(),
+                "Node deletion changed unrelated edges"
             );
         }
         _ => {

@@ -36,6 +36,9 @@ pub struct Node {
     pub editable: bool,
     pub line: usize,
     pub text_fields: Vec<TextField>,
+    pub attached_edges: usize,
+    pub deletable: bool,
+    pub delete_reason: Option<String>,
     #[serde(skip)]
     pub call: Call,
     #[serde(skip)]
@@ -133,6 +136,7 @@ pub struct Diagram {
     pub y_scale: f64,
     pub insert_primitives: Vec<String>,
     pub insertion_reason: Option<String>,
+    pub opaque_references: bool,
     #[serde(skip)]
     pub call: Call,
     #[serde(skip)]
@@ -681,11 +685,13 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut warnings = Vec::new();
+    let mut opaque_references = false;
     let mut names = HashSet::new();
     // Only immediate positional graph arguments are source-editable. Nested
     // labels, embedded backbone glyphs and closures are deliberately opaque.
     for arg in graph.arguments.iter().filter(|a| a.name.is_none()) {
         let Some(call) = calls.iter().find(|c| c.span == arg.span) else {
+            opaque_references = true;
             warnings.push(format!(
                 "Line {}: computed graph argument is not editable",
                 line(source, arg.span.start)
@@ -797,6 +803,7 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
                 (named, tuple_point(source, p[0]))
             }
             _ => {
+                opaque_references = true;
                 warnings.push(format!(
                     "Line {}: unsupported graph constructor {}",
                     line(source, call.span.start),
@@ -835,11 +842,39 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
             editable,
             line: line(source, call.span.start),
             text_fields,
+            attached_edges: 0,
+            deletable: false,
+            delete_reason: None,
             call: call.clone(),
             name_span: id_arg.expect("validated node name").span.clone(),
         });
     }
     ensure!(!nodes.is_empty(), "No named nodes recognized");
+    let only_node = nodes.len() == 1;
+    let node_ids = nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>();
+    for node in &mut nodes {
+        node.attached_edges = edges
+            .iter()
+            .filter(|edge| {
+                edge.vertices.iter().any(|vertex| match vertex {
+                    Vertex::Anchor { name, .. } => node_ids
+                        .iter()
+                        .filter(|id| name == *id || name.starts_with(&format!("{id}.")))
+                        .max_by_key(|id| id.len())
+                        .is_some_and(|id| id == &node.id),
+                    Vertex::Point { .. } => false,
+                })
+            })
+            .count();
+        node.delete_reason = if only_node {
+            Some("The final recognized node cannot be deleted because the editor requires a non-empty graph".into())
+        } else if opaque_references {
+            Some("Deletion is unavailable because computed or unsupported graph arguments may reference this node".into())
+        } else {
+            None
+        };
+        node.deletable = node.delete_reason.is_none();
+    }
     ensure!(
         nodes.len() < 4096 && edges.len() < 256 && edges.iter().all(|e| e.vertices.len() < 256),
         "Diagram exceeds prototype limits"
@@ -857,6 +892,7 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         y_scale: scale,
         insert_primitives,
         insertion_reason,
+        opaque_references,
         call: graph,
         import_aliases,
     })
