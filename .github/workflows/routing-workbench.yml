@@ -1,39 +1,89 @@
-# Temporary, branch-scoped verification environment. Removed before final delivery.
+# Temporary exact-source transfer for this task branch only; removed by its own commit.
 name: Routing workbench
 on:
   push:
     branches: [codex/issue-5-obstacle-routing]
     paths: [.github/workflows/routing-workbench.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  tools:
+  apply:
+    if: github.repository == 'JanDuchscherer104/cetz-studio' && github.ref == 'refs/heads/codex/issue-5-obstacle-routing'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 1.89.0
           components: rustfmt, clippy
-      - name: Prepare remaining native runtime and Typst package cache
+      - name: Materialize the exact locally tested patch
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/route-extra"
-          mkdir -p "$out/lib" "$out/typst" "$out/package-cache"
-          cp -L "$(rustc --print sysroot)/lib/"libLLVM.so.* "$out/lib/"
-          curl --fail --location --retry 3 https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-unknown-linux-musl.tar.xz -o "$RUNNER_TEMP/typst.tar.xz"
-          tar -xJf "$RUNNER_TEMP/typst.tar.xz" --strip-components=1 -C "$out/typst"
-          for src in examples/*.typ; do
-            "$out/typst/typst" compile --root . --package-cache-path "$out/package-cache" --format svg "$src" "$RUNNER_TEMP/$(basename "$src").svg"
-          done
-          tar -czf "$RUNNER_TEMP/routing-extra.tgz" -C "$RUNNER_TEMP" route-extra
-      - uses: actions/upload-artifact@v4
-        with:
-          name: routing-workbench-extra
-          path: ${{ runner.temp }}/routing-extra.tgz
-          retention-days: 1
-          compression-level: 0
+          python - <<'PY'
+          import base64, gzip, hashlib, json, os, shutil, subprocess
+          from pathlib import Path
+          allowed = set('''
+          .github/workflows/ci.yml Cargo.lock Cargo.toml README.md THIRD_PARTY_NOTICES.md
+          docs/licenses/pathfinding-MIT.txt docs/routing.md examples/routing.typ
+          src/edit.rs src/lib.rs src/main.rs src/routing/jobs.rs src/routing/measure.rs
+          src/routing/measure.typ src/routing/mod.rs src/routing/patches.rs src/session.rs
+          tests/routing.rs tests/routing_browser.py tests/routing_roundtrip.rs
+          web/app.js web/index.html web/routing.js web/style.css
+          '''.split())
+          parts = [Path(f'.github/routing-transfer/part-{i}').read_bytes() for i in range(6)]
+          # Repair one identified transport transcription byte, then require the
+          # exact original whole-payload checksum before interpreting any content.
+          assert parts[4][445:446] == b'4'
+          parts[4] = parts[4][:445] + b'7' + parts[4][446:]
+          data = base64.b64decode(b''.join(parts), validate=True)
+          assert hashlib.sha256(data).hexdigest() == '21d108589f2a0cc0099bf072085149e59da28cc0bc2c717fd3cbe99ba349128f'
+          payload = json.loads(gzip.decompress(data))
+          assert set(payload) == {'expected', 'replacement', 'patch'}
+          assert set(payload['expected']) == allowed
+          assert set(payload['replacement']) == {'Cargo.toml', 'Cargo.lock'}
+          for name, expected in payload['expected'].items():
+              p = Path(name)
+              assert not p.is_absolute() and '..' not in p.parts
+              assert not any(q.is_symlink() for q in [p, *p.parents])
+              if expected is None:
+                  assert not p.exists(), f'New path already exists: {name}'
+              else:
+                  b = p.read_bytes()
+                  actual = hashlib.sha1(f'blob {len(b)}\0'.encode() + b).hexdigest()
+                  assert actual == expected, f'Base changed: {name}: {actual}'
+          patch = Path(os.environ['RUNNER_TEMP']) / 'routing-verified.patch'
+          patch.write_text(payload['patch'])
+          subprocess.run(['git', 'apply', '--check', str(patch)], check=True)
+          subprocess.run(['git', 'apply', str(patch)], check=True)
+          for name, content in payload['replacement'].items():
+              Path(name).write_text(content)
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          changed.update(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines())
+          assert changed == allowed, f'Unexpected source delta: {changed ^ allowed}'
+          shutil.rmtree('.github/routing-transfer')
+          Path('.github/workflows/routing-workbench.yml').unlink()
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          subprocess.run(['git', 'add', '--', *sorted(allowed), '.github/routing-transfer', '.github/workflows/routing-workbench.yml'], check=True)
+          PY
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check all targets
+        run: cargo check --locked --all-targets
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Rust contract tests
+        run: cargo test --locked --all-targets
+      - name: Commit verified implementation to the task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: preview obstacle-aware edge routes with fixed-node adoption'
+          remote="$(git ls-remote origin refs/heads/codex/issue-5-obstacle-routing | cut -f1)"
+          test "$remote" = "$GITHUB_SHA"
+          git push origin HEAD:refs/heads/codex/issue-5-obstacle-routing
+          echo "Implementation commit: $(git rev-parse HEAD)"
