@@ -1,0 +1,30 @@
+{
+  "scope": "Production browser code with synthetic API/geometry fixture; Rust and Typst NOT executed",
+  "passed": 23,
+  "checks": [
+    "Preview visibly identifies itself as an API/geometry fixture",
+    "Fixture cannot save source",
+    "Twelve rendered node hitboxes are mapped",
+    "Measured/source coordinate checks accept this fixture",
+    "Calibration marker is removed from displayed SVG",
+    "Node drag emits the exact millimetre command",
+    "Browser sends commands, never replacement source",
+    "Inspector follows accepted fixture position",
+    "Undo restores displayed fixture position",
+    "Redo restores displayed fixture position",
+    "Selecting a routed edge exposes waypoint handles",
+    "Waypoint drag identifies the exact edge and vertex",
+    "Orthogonal segment drag emits a perpendicular displacement",
+    "Label drag projects onto the selected route segment",
+    "Port control changes only the requested endpoint port",
+    "Rejected API command leaves the displayed revision unchanged",
+    "Rejected compiler result is visible, not silently accepted",
+    "Rejected command restores prior displayed coordinates",
+    "Element search filters without changing graph membership",
+    "Zoom controls update the canvas scale",
+    "Space-drag pans even when starting over a node",
+    "Save stays disabled after all fixture edits",
+    "No browser JavaScript exceptions"
+  ],
+  "browser_errors": []
+}

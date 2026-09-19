@@ -1,0 +1,9 @@
+/target/
+/.venv/
+/verification/*.png
+.cetz-studio-backups/
+.cetz-studio-*
+__pycache__/
+.ci/
+*.log
+.DS_Store

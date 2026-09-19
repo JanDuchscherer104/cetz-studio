@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cetz Studio</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">C</span><strong>Cetz Studio</strong><span class="tag">0.1 PREVIEW</span></div>
+  <div class="header-actions"><span id="session-mode" class="quiet">LOCAL · RUST + TYPST</span><button id="download" class="subtle">Export draft</button><button id="save" class="primary" disabled>Save source <kbd>⌘ S</kbd></button></div>
+</header>
+<div class="filebar"><span class="file-icon">◇</span><strong id="filename">Opening figure…</strong><span id="dirty" class="pill">Connecting</span><span class="filebar-spacer"></span><span>Typst source · Layout and declared style controls</span></div>
+<div id="fixture-banner" hidden>INTERACTIVE UI FIXTURE · Browser interactions only. Rust and Typst are not running in this preview. Saving is disabled.</div>
+<main>
+  <aside class="left">
+    <div class="section-title">ELEMENTS <span id="element-count"></span></div>
+    <input id="search" placeholder="Find a node or connection…" aria-label="Find element" autocomplete="off">
+    <div class="list-tabs"><button id="nodes-tab" class="active">Nodes <span id="node-count"></span></button><button id="edges-tab">Edges <span id="edge-count"></span></button><button id="parameters-tab">Controls <span id="parameter-count"></span></button></div>
+    <div id="elements" class="elements"></div>
+    <div class="left-foot"><span class="status-dot"></span> Source-preserving edits<br><span class="quiet">No graph conversion. No AI calls.</span></div>
+  </aside>
+  <section class="workspace">
+    <div class="toolbar">
+      <div class="toolbar-group"><button id="undo" title="Undo · Ctrl/Cmd+Z" disabled>↶</button><button id="redo" title="Redo · Ctrl/Cmd+Shift+Z" disabled>↷</button></div>
+      <div class="toolbar-group"><label class="snap"><input id="snap" type="checkbox" checked> Snap</label><select id="grid-step" aria-label="Snap step"><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option></select></div>
+      <span class="toolbar-spacer"></span>
+      <select id="page-select" aria-label="Preview page" hidden></select>
+      <span id="preview-status" class="preview-status">Waiting for compiler</span><button id="render">Recompile</button><span class="toolbar-divider"></span><button id="zoom-out" title="Zoom out">−</button><span id="zoom">100%</span><button id="zoom-in" title="Zoom in">+</button><button id="fit">Fit</button>
+    </div>
+    <div id="viewport" tabindex="0" aria-label="Figure canvas">
+      <div id="empty"><div class="empty-symbol">⌘</div><h2>Waiting for the Typst preview</h2><p>A valid compilation is required before a layout edit is accepted.</p></div>
+      <div id="paper"><div id="figure"></div><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div id="canvas-hint" class="canvas-hint">Drag a node · Select an edge for route handles · Space + drag to pan</div>
+      <div id="busy-overlay" hidden><span class="spinner"></span><span>Validating with Typst…</span></div>
+    </div>
+    <div class="dock">
+      <div class="dock-tabs"><button id="diff-tab" class="active">Source diff <span id="diff-count">0</span></button><button id="diagnostics-tab">Diagnostics <span id="warning-count">0</span></button><span class="toolbar-spacer"></span><span id="revision" class="quiet">Revision 0</span></div>
+      <pre id="diff" class="dock-content">No changes. The original source is untouched.</pre><pre id="diagnostics" class="dock-content" hidden></pre>
+    </div>
+  </section>
+  <aside class="right">
+    <div class="section-title">INSPECTOR</div>
+    <div id="inspector"></div>
+    <div class="guardrail"><div class="guardrail-title">Your source stays yours</div><p>Edit supported layout literals and declared style controls. Equations, data, and generated relationships stay in Typst.</p><p>Fixed waypoints do not follow node drags automatically.</p></div>
+  </aside>
+</main>
+<footer><span id="status">Opening source…</span><span class="quiet">Undo is session-local · Save validates the clean source and retains a backup</span></footer>
+<div id="toast" role="alert" hidden></div>
+</body>
+</html>

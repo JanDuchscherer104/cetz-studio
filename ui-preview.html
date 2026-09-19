@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cetz Studio</title>
+  <style>:root{--bg:#10151d;--panel:#151c26;--line:#293443;--text:#e1e7ef;--muted:#8e9caf;--accent:#6bddb5;--accent-deep:#1d473d;--red:#ff9992;--amber:#e9c685;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);font-size:13px;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;display:flex;flex-direction:column;height:100vh;overflow:hidden}button,input,select{font:inherit}button{color:var(--text);background:#1c2633;border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer;white-space:nowrap}button:hover:not(:disabled){background:#2b3b4b;border-color:#61798a}button:disabled{opacity:.35;cursor:default}button.primary{background:var(--accent);color:#132820;border-color:var(--accent);font-weight:650;padding:9px 14px}button.primary:hover:not(:disabled){background:#90e8c9}button.subtle{background:transparent}kbd{font-size:11px;font-weight:450;margin-left:12px;opacity:.7}header{height:62px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--line);background:#141c26}.brand,.header-actions{display:flex;align-items:center;gap:14px}.brand{font-size:16px;letter-spacing:.2px}.brand-mark{height:30px;width:30px;display:grid;place-items:center;background:var(--accent-deep);color:var(--accent);border:1px solid #45896f;border-radius:8px;font-size:18px;font-weight:650}.brand-divider{color:#5d6e81;margin:0 8px}.tag{font-size:9px;letter-spacing:1.4px;border:1px solid #354354;border-radius:4px;padding:4px 6px;color:#adbbca}.quiet{color:var(--muted);font-size:11px}.filebar{height:42px;display:flex;align-items:center;gap:12px;padding:0 24px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--line)}.filebar strong{color:#cbd6e4;font-weight:500;font-size:12px}.file-icon{font-size:21px;color:var(--accent)}.filebar-spacer,.toolbar-spacer{flex:1}.pill{font-size:10px;border:1px solid #334154;padding:3px 7px;border-radius:12px;color:#a9b8cb}.pill.modified{border-color:#79603a;color:var(--amber);background:#392e1c}#fixture-banner{background:#3c3020;color:#f0d59a;padding:8px 22px;font-size:11px;border-bottom:1px solid #6b583b;letter-spacing:.3px}main{display:flex;flex:1;min-height:0}.left,.right{width:228px;flex-shrink:0;background:var(--panel);display:flex;flex-direction:column;padding:20px 14px;overflow:auto}.left{border-right:1px solid var(--line)}.right{width:250px;border-left:1px solid var(--line);padding:20px 18px}.section-title{display:flex;justify-content:space-between;color:#a5b6c9;font-size:10px;letter-spacing:1.8px;margin-bottom:16px;font-weight:650}input{background:#101720;border:1px solid var(--line);border-radius:5px;color:var(--text);width:100%;padding:9px 10px;outline:none}input:focus{border-color:var(--accent)}#search{font-size:11px;margin-bottom:15px}.list-tabs{display:flex;border-bottom:1px solid var(--line);padding-bottom:8px;gap:4px}.list-tabs button{flex:1;border:0;font-size:11px;background:transparent;color:var(--muted)}.list-tabs button.active{color:var(--accent);background:#213a34}.list-tabs span,.dock-tabs span:not(.toolbar-spacer):not(.quiet){font-size:9px;opacity:.7;margin-left:5px}.elements{overflow:auto;margin:12px -5px;flex:1}.element{border:1px solid transparent;border-radius:5px;display:flex;width:100%;align-items:center;padding:9px 8px;gap:8px;color:#adbacb;background:transparent;text-align:left;margin-bottom:2px;font-size:12px}.element.active{background:#213a34;border-color:#355d50;color:#96efcd}.element .element-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.element .kind-icon{height:17px;width:17px;display:grid;place-items:center;border:1px solid #4f5c6d;border-radius:3px;font-size:10px;color:#c9d2e0}.element .line{font-size:9px;color:#708498}.left-foot{line-height:1.9;font-size:10px;padding-top:12px;border-top:1px solid var(--line);color:#b8c7d7}.status-dot{display:inline-block;width:5px;height:5px;background:var(--accent);border-radius:50%;margin-right:5px}.workspace{min-width:0;flex:1;display:flex;flex-direction:column}.toolbar{height:50px;flex-shrink:0;display:flex;align-items:center;gap:7px;padding:0 14px;background:#141b25;border-bottom:1px solid var(--line)}.toolbar button{font-size:11px;padding:6px 9px}.toolbar-group{display:flex;align-items:center;gap:5px;margin-right:10px}.toolbar-group:first-child button{font-size:20px;padding:0 9px;height:29px}.snap{display:flex;align-items:center;gap:5px;font-size:11px;color:#bac8d9}.snap input{width:auto;accent-color:var(--accent)}select{border:1px solid var(--line);border-radius:5px;padding:5px 7px;background:#101720;color:#bfcbdc;font-size:11px}.preview-status{font-size:10px;color:#8daba0;margin-right:6px}.toolbar-divider{height:20px;width:1px;background:var(--line);margin:0 5px}#zoom{min-width:36px;text-align:center;color:var(--muted);font-size:10px}#viewport{position:relative;flex:1;overflow:hidden;outline:none;min-height:180px;background-color:#19212c;background-image:radial-gradient(#384451 1px,transparent 1px);background-size:20px 20px;touch-action:none}#viewport.panning{cursor:grabbing}#paper{position:absolute;left:0;top:0;transform-origin:0 0;box-shadow:0 10px 60px #0005;background:white;display:none}#figure svg{display:block;width:100%;height:100%;overflow:visible}#overlay{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}.node-hit{pointer-events:all;fill:transparent;stroke:transparent;cursor:grab}.node-hit:hover{stroke:#1b9c7e;stroke-width:1;stroke-dasharray:3 2}.node-hit.selected{stroke:#219979;fill:#55ba9810;stroke-width:1.5;stroke-dasharray:4 2}.node-hit.locked{cursor:default}.edge-hit{pointer-events:stroke;stroke:transparent;fill:none;cursor:pointer}.route-guide{pointer-events:none;fill:none;stroke:#138767;stroke-width:1;stroke-dasharray:3 2}.handle{fill:#f6fffc;stroke:#188769;stroke-width:1.5;cursor:move;pointer-events:all}.label-handle{fill:#fff9e9;stroke:#bf9446;stroke-width:1.5;cursor:move;pointer-events:all}.drag-ghost{stroke:#139473;stroke-width:1.5;stroke-dasharray:3 2;fill:#6bddb533;pointer-events:none}.canvas-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);padding:8px 13px;background:#10171fed;border:1px solid #354352;border-radius:6px;color:#9fb1c4;white-space:nowrap;font-size:10px;pointer-events:none}#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:25px;color:#90a3b8}#empty h2{font-size:17px;font-weight:500;margin-bottom:0}#empty p{font-size:12px}.empty-symbol{font-size:40px;color:#536b7f}#busy-overlay{position:absolute;top:15px;left:50%;transform:translateX(-50%);padding:10px 15px;border-radius:7px;background:#142a25;color:#a6ebd0;border:1px solid #346655;font-size:11px;display:flex;gap:9px;align-items:center}#busy-overlay[hidden]{display:none}.spinner{border:2px solid #49846e;border-top-color:#baf3de;width:12px;height:12px;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.dock{height:180px;flex-shrink:0;border-top:1px solid var(--line);background:#111821;display:flex;flex-direction:column}.dock-tabs{height:38px;flex-shrink:0;display:flex;align-items:center;padding:0 15px;border-bottom:1px solid #243040;gap:16px}.dock-tabs button{border:0;background:none;border-radius:0;padding:10px 0;font-size:11px;color:var(--muted)}.dock-tabs button.active{color:var(--accent);border-bottom:2px solid var(--accent)}.dock-content{margin:0;overflow:auto;padding:14px 19px;font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;color:#91a3b6;tab-size:2;white-space:pre}.dock-content .add{color:#a4e5c6;background:#1e40332e;display:block}.dock-content .remove{color:#f8b0a5;background:#4828244a;display:block}.dock-content .hunk{color:#83b8ee;display:block}.selection-type{font-size:10px;letter-spacing:1.5px;color:var(--accent);margin:4px 0 9px}.selection-name{font-size:19px;color:#eff4f9;margin:0 0 5px;font-weight:550;overflow-wrap:anywhere}.source-line{font-size:10px;color:#7991a6;margin-bottom:22px}.inspector-hint{font-size:12px;line-height:1.8;color:#9dacc0;margin-top:15px}.field-label{font-size:10px;letter-spacing:1px;color:#8da2b8;display:block;margin:17px 0 8px;text-transform:uppercase}.coordinate-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.coordinate-row label{color:#8fa6ba;font-size:10px}.coordinate-row input{margin-top:5px;width:100%;font-size:13px;padding:9px 7px}.field-note{font-size:10px;color:#7590a7;line-height:1.7;margin-top:8px}.fullwidth{width:100%;margin-top:12px;font-size:11px}.property-row{display:flex;align-items:center;justify-content:space-between;margin:12px 0;font-size:11px;gap:8px}.property-row select{min-width:90px}.guardrail{border:1px solid #30404e;border-radius:7px;padding:13px;margin-top:auto;background:#18232c}.guardrail-title{font-size:11px;color:#c0d3df;display:flex;align-items:center;gap:7px}.guardrail-title::before{content:"◇";color:var(--accent)}.guardrail p{font-size:10px;color:#92a7b8;line-height:1.75;margin:8px 0 0}footer{height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-top:1px solid var(--line);font-size:10px;background:#101720;color:#a7b6c7}#toast{position:fixed;bottom:45px;left:50%;transform:translateX(-50%);max-width:750px;max-height:40vh;overflow:auto;background:#332525;border:1px solid #9b6559;border-radius:7px;padding:14px 18px;color:#ffd4c7;box-shadow:0 5px 30px #0008;font-size:12px;white-space:pre-wrap;z-index:99}#inspector{margin-bottom:24px}[hidden]{display:none!important}
+@media(max-width:1100px){.left{width:185px}.right{width:210px}.preview-status,.filebar-spacer+span,.header-actions .quiet{display:none}.canvas-hint{font-size:9px}.toolbar{gap:4px;padding:0 8px}.dock{height:150px}}@media(max-width:760px){.left{display:none}.right{width:185px;padding:15px 10px}.brand .tag{display:none}.brand{font-size:13px}.header-actions{gap:6px}header{padding:0 10px}footer .quiet{display:none}.canvas-hint{display:none}.toolbar-group{margin-right:0}.toolbar #render{display:none}.dock{height:130px}}
+.list-tabs button{padding:7px 5px;min-width:0}
+#inspector>input{margin:8px 0 12px}
+#inspector>input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+</style>
+  
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">C</span><strong>Cetz Studio</strong><span class="tag">0.1 PREVIEW</span></div>
+  <div class="header-actions"><span id="session-mode" class="quiet">LOCAL · RUST + TYPST</span><button id="download" class="subtle">Export draft</button><button id="save" class="primary" disabled>Save source <kbd>⌘ S</kbd></button></div>
+</header>
+<div class="filebar"><span class="file-icon">◇</span><strong id="filename">Opening figure…</strong><span id="dirty" class="pill">Connecting</span><span class="filebar-spacer"></span><span>Typst source · Layout and declared style controls</span></div>
+<div id="fixture-banner" hidden>INTERACTIVE UI FIXTURE · Browser interactions only. Rust and Typst are not running in this preview. Saving is disabled.</div>
+<main>
+  <aside class="left">
+    <div class="section-title">ELEMENTS <span id="element-count"></span></div>
+    <input id="search" placeholder="Find a node or connection…" aria-label="Find element" autocomplete="off">
+    <div class="list-tabs"><button id="nodes-tab" class="active">Nodes <span id="node-count"></span></button><button id="edges-tab">Edges <span id="edge-count"></span></button><button id="parameters-tab">Controls <span id="parameter-count"></span></button></div>
+    <div id="elements" class="elements"></div>
+    <div class="left-foot"><span class="status-dot"></span> Source-preserving edits<br><span class="quiet">No graph conversion. No AI calls.</span></div>
+  </aside>
+  <section class="workspace">
+    <div class="toolbar">
+      <div class="toolbar-group"><button id="undo" title="Undo · Ctrl/Cmd+Z" disabled>↶</button><button id="redo" title="Redo · Ctrl/Cmd+Shift+Z" disabled>↷</button></div>
+      <div class="toolbar-group"><label class="snap"><input id="snap" type="checkbox" checked> Snap</label><select id="grid-step" aria-label="Snap step"><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option></select></div>
+      <span class="toolbar-spacer"></span>
+      <select id="page-select" aria-label="Preview page" hidden></select>
+      <span id="preview-status" class="preview-status">Waiting for compiler</span><button id="render">Recompile</button><span class="toolbar-divider"></span><button id="zoom-out" title="Zoom out">−</button><span id="zoom">100%</span><button id="zoom-in" title="Zoom in">+</button><button id="fit">Fit</button>
+    </div>
+    <div id="viewport" tabindex="0" aria-label="Figure canvas">
+      <div id="empty"><div class="empty-symbol">⌘</div><h2>Waiting for the Typst preview</h2><p>A valid compilation is required before a layout edit is accepted.</p></div>
+      <div id="paper"><div id="figure"></div><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div id="canvas-hint" class="canvas-hint">Drag a node · Select an edge for route handles · Space + drag to pan</div>
+      <div id="busy-overlay" hidden><span class="spinner"></span><span>Validating with Typst…</span></div>
+    </div>
+    <div class="dock">
+      <div class="dock-tabs"><button id="diff-tab" class="active">Source diff <span id="diff-count">0</span></button><button id="diagnostics-tab">Diagnostics <span id="warning-count">0</span></button><span class="toolbar-spacer"></span><span id="revision" class="quiet">Revision 0</span></div>
+      <pre id="diff" class="dock-content">No changes. The original source is untouched.</pre><pre id="diagnostics" class="dock-content" hidden></pre>
+    </div>
+  </section>
+  <aside class="right">
+    <div class="section-title">INSPECTOR</div>
+    <div id="inspector"></div>
+    <div class="guardrail"><div class="guardrail-title">Your source stays yours</div><p>Edit supported layout literals and declared style controls. Equations, data, and generated relationships stay in Typst.</p><p>Fixed waypoints do not follow node drags automatically.</p></div>
+  </aside>
+</main>
+<footer><span id="status">Opening source…</span><span class="quiet">Undo is session-local · Save validates the clean source and retains a backup</span></footer>
+<div id="toast" role="alert" hidden></div>
+<script>window.CETZ_STUDIO_DEMO_SOURCE="// Synthetic layout fixture, not a measured or scientifically certified diagram.\n#import \"@preview/fletcher:0.5.8\" as f\n#set page(width: auto, height: auto, margin: 6mm, fill: white)\n#set text(size: 9pt)\n#let ink = rgb(\"26374B\")\n#let input = rgb(\"D8EADD\")\n#let compute = rgb(\"E5DDED\")\n#let output = rgb(\"F7DED8\")\n#let n(x, y, name, title, body: [], fill: compute) = f.node(\n  (x * 1mm, -y * 1mm),\n  align(center + horizon)[#text(weight: \"bold\", title)\\ #body],\n  name: name, width: 34mm, height: 13mm, inset: 3pt,\n  shape: f.shapes.rect, corner-radius: 3pt,\n  stroke: .65pt + fill.darken(35%), fill: fill,\n)\n#let junction(x, y, name) = f.node(\n  (x * 1mm, -y * 1mm), [], name: name,\n  width: .7mm, height: .7mm, inset: 0pt, fill: ink, stroke: none,\n)\n#let graph(..args) = f.diagram(..args.pos(), ..(\n  edge-stroke: .7pt + ink, edge-corner-radius: 3pt,\n  mark-scale: 65%, spacing: 2pt, ..args.named(),\n))\n#let edge(..args) = f.edge(..args.pos(), ..(\n  label-side: center,\n  label-wrapper: e => box(fill: white, inset: (x: 2pt, y: 1pt))[\n    #text(size: 7.5pt, e.label)\n  ], ..args.named(),\n))\n#align(center)[#text(size: 14pt, weight: \"bold\")[Candidate scoring \u00b7 layout fixture]]\n#v(5mm)\n#graph(\n  n(20, 12, <physical>, [Physical inputs], body: [poses \u00b7 scene statistics], fill: input),\n  n(71, 12, <target>, [Target relation], body: [candidate-to-target pose], fill: input),\n  n(124, 12, <state>, [Shared state], body: [scene \u00b7 target \u00b7 history], fill: input),\n  n(20, 40, <trunk>, [Physical trunk], body: [Linear \u00b7 GELU \u00b7 norm]),\n  n(71, 40, <query>, [Value embedding], body: [$bold(u)_i in RR^d$]),\n  n(124, 40, <tokens>, [State encoders], body: [$Z in RR^(5 times d)$]),\n  n(20, 65, <feasibility>, [Feasibility], body: [auxiliary prediction], fill: output),\n  n(95, 65, <attention>, [Cross-attention], body: [independent queries]),\n  n(95, 90, <concat>, [Concatenate], body: [$[bold(u), bold(c), bold(u) dot.o bold(c)]$]),\n  n(95, 113, <decoder>, [Scalar decoder], body: [Linear \u00b7 GELU \u00b7 Linear]),\n  n(144, 113, <value>, [Conditional value], body: [$Q_h$], fill: output),\n  junction(71, 55, <query-fork>),\n  edge(<physical>, <trunk>, \"-|>\"),\n  edge(<target>, <query>, \"-|>\"),\n  edge(<trunk>, <query>, \"-|>\"),\n  edge(<state>, <tokens>, \"-|>\"),\n  edge(<trunk>, <feasibility>, \"-|>\"),\n  edge(<query>, <query-fork>, \"-\", [$N_q times d$]),\n  edge(<query-fork>, (71mm, -65mm), <attention.west>, \"-|>\", [$Q$]),\n  edge(<tokens>, (124mm, -65mm), <attention.east>, \"-|>\", [$K,V$]),\n  edge(<query-fork>, (52mm, -55mm), (52mm, -90mm), <concat.west>, \"-|>\", [$bold(u)_i$], label-pos: (1, .5)),\n  edge(<attention>, <concat>, \"-|>\", [$bold(c)_i$]),\n  edge(<concat>, <decoder>, \"-|>\", [$N_q times 3d$]),\n  edge(<decoder>, <value>, \"-|>\", [$N_q times 1$]),\n)\n#v(5mm)\n#align(center)[#text(size: 7.5pt)[Synthetic editor fixture \u00b7 no measured performance or architecture claim]]\n";
+/* Test-only API fixture. This is NOT a Rust parser, a Typst compiler, or a save
+ * implementation. It records UI commands and moves synthetic SVG geometry. */
+window.CETZ_STUDIO_FIXTURE = true;
+(() => {
+  const clone=x=>JSON.parse(JSON.stringify(x));
+  const names=[['physical',20,12,'Physical inputs','poses · scene statistics'],['target',71,12,'Target relation','candidate-to-target pose'],['state',124,12,'Shared state','scene · target · history'],['trunk',20,40,'Physical trunk','Linear · GELU · norm'],['query',71,40,'Value embedding','uᵢ ∈ ℝᵈ'],['tokens',124,40,'State encoders','Z ∈ ℝ⁵ˣᵈ'],['feasibility',20,65,'Feasibility','auxiliary prediction'],['attention',95,65,'Cross-attention','independent queries'],['concat',95,90,'Concatenate','[u, c, u ⊙ c]'],['decoder',95,113,'Scalar decoder','Linear · GELU · Linear'],['value',144,113,'Conditional value','Qₕ'],['query-fork',71,55,'','']];
+  const anchor=name=>({kind:'anchor',name});
+  const point=(x,y)=>({kind:'point',point:{x,y,editable:true}});
+  const specifications=[['physical','trunk'],['target','query'],['trunk','query'],['state','tokens'],['trunk','feasibility'],['query','query-fork'],['query-fork',[71,65],'attention.west'],['tokens',[124,65],'attention.east'],['query-fork',[52,55],[52,90],'concat.west'],['attention','concat'],['concat','decoder'],['decoder','value']];
+  const labels=['','','','','','Nq × d','Q','K, V','uᵢ','cᵢ','Nq × 3d','Nq × 1'];
+  let state={filename:'demo.typ',revision:0,disk_hash:'UI_FIXTURE_NOT_A_DISK_HASH',source:window.CETZ_STUDIO_DEMO_SOURCE||'// UI fixture. Open examples/demo.typ with the Rust server.\n',diagram:{nodes:names.map(([id,x,y,title,body],i)=>({id,title,body,kind:id==='query-fork'?'junction':'n',position:{x,y,editable:true},editable:true,line:34+i})),edges:specifications.map((v,i)=>({id:`e${i}`,vertices:v.map(x=>Array.isArray(x)?point(...x):anchor(x)),has_label:!!labels[i],editable:true,label_position:i===8?[1,.5]:[0,.5],line:46+i})),warnings:['UI fixture only. Geometry is synthetic, not compiled from Typst.'],y_scale:1},svg:null,diagnostics:'No Rust or Typst process is running in this fixture.',diff:'',dirty:false,undo:false,redo:false,preview_current:true};
+  const history=[],future=[];window.cetzStudioFixtureRequests=[];
+  const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+  function endpoint(v){if(v.kind==='point')return v.point;const n=state.diagram.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0];if(!n)return{x:0,y:0};const p={...n.position},port=v.name.slice(n.id.length);if(port.includes('west'))p.x-=17;if(port.includes('east'))p.x+=17;if(port.includes('north'))p.y-=6.5;if(port.includes('south'))p.y+=6.5;return p;}
+  function render(){
+    const S=72/25.4;
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520pt" height="405pt" viewBox="0 0 520 405"><rect width="520" height="405" fill="white"/><text x="260" y="24" text-anchor="middle" fill="#26374b" font-family="Georgia,serif" font-weight="bold" font-size="13">Candidate scoring · layout fixture</text><g transform="translate(24 45) scale(${S})">`;
+    const rect=(x,y,w,h,color)=>`<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" stroke="#${color}" stroke-width="0.00012345" fill="none"/>`;
+    svg+=rect(0,0,.02,.02,'a00000')+rect(10,0,.02,.02,'a00001')+rect(0,10,.02,.02,'a00002');
+    for(const [i,e] of state.diagram.edges.entries()){
+      const p=e.vertices.map(endpoint);
+      svg+=`<polyline points="${p.map(p=>`${p.x},${p.y}`).join(' ')}" fill="none" stroke="#536475" stroke-width=".25" stroke-linejoin="round"/>`;
+      p.forEach((p,j)=>svg+=rect(p.x,p.y,.02,.02,`a2${(i*256+j).toString(16).padStart(4,'0')}`));
+      if(labels[i]){const seg=e.label_position[0],f=e.label_position[1],a=p[seg],b=p[seg+1],x=a.x+(b.x-a.x)*f,y=a.y+(b.y-a.y)*f;svg+=`<rect x="${x-6}" y="${y-2.3}" width="12" height="4.6" fill="white"/><text x="${x}" y="${y+1}" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="2.9" fill="#334155">${escape(labels[i])}</text>`+rect(x,y,12,4.6,`a3${i.toString(16).padStart(4,'0')}`);}
+    }
+    for(const [i,n] of state.diagram.nodes.entries()){
+      const {x,y}=n.position,w=n.kind==='junction'?.7:34,h=n.kind==='junction'?.7:13;
+      const fill=n.kind==='junction'?'#334155':i<3?'#d8eadd':[6,10].includes(i)?'#f7ded8':i===8?'#fbf0c8':'#e5dded';
+      svg+=`<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="1.2" fill="${fill}" stroke="#9ba8ae" stroke-width=".22"/>`;
+      if(n.title)svg+=`<text x="${x}" y="${y-.5}" text-anchor="middle" font-family="Georgia,serif" font-size="3.1" font-weight="bold" fill="#27384b">${escape(n.title)}</text><text x="${x}" y="${y+3.2}" text-anchor="middle" font-family="Georgia,serif" font-size="2.65" fill="#465567">${escape(n.body)}</text>`;
+      svg+=rect(x,y,w,h,`a1${i.toString(16).padStart(4,'0')}`);
+    }
+    return svg+'</g><text x="260" y="392" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#788494">Synthetic UI fixture · not a Typst render</text></svg>';
+  }
+  const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
+  function snapshot(){state.svg=render();state.undo=history.length>0;state.redo=future.length>0;return clone(state);}
+  window.fetch=async(url,options={})=>{
+    if(url==='/api/state')return response({token:'ui-fixture',snapshot:snapshot()});
+    const body=JSON.parse(options.body||'{}');window.cetzStudioFixtureRequests.push({url,body});
+    if(window.CETZ_STUDIO_TEST_FAIL_NEXT){window.CETZ_STUDIO_TEST_FAIL_NEXT=false;return response({error:'Injected compiler failure · UI test fixture',snapshot:snapshot()},409);}
+    if(url==='/api/save')return response({error:'Saving is disabled in the UI fixture.',snapshot:snapshot()},409);
+    if(body.revision!==state.revision)return response({error:'Stale fixture revision',snapshot:snapshot()},409);
+    if(url==='/api/edit'){
+      history.push(clone(state));future.length=0;const c=body.command;
+      if(c.kind==='move_node'){const n=state.diagram.nodes.find(n=>n.id===c.id);n.position.x=c.x;n.position.y=c.y;}
+      if(c.kind==='move_waypoint'){const p=state.diagram.edges.find(e=>e.id===c.edge).vertices[c.vertex].point;p.x=c.x;p.y=c.y;}
+      if(c.kind==='move_segment'){const e=state.diagram.edges.find(e=>e.id===c.edge),a=e.vertices[c.segment].point,b=e.vertices[c.segment+1].point,axis=Math.abs(a.x-b.x)<1e-6?'x':'y';a[axis]+=c.delta;b[axis]+=c.delta;}
+      if(c.kind==='set_label')state.diagram.edges.find(e=>e.id===c.edge).label_position=[c.segment,c.fraction];
+      if(c.kind==='set_port'){const e=state.diagram.edges.find(e=>e.id===c.edge),v=c.end==='start'?e.vertices[0]:e.vertices.at(-1),n=state.diagram.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0];v.name=n.id+(c.port==='auto'?'':`.${c.port}`);}
+      state.revision++;state.dirty=true;state.diff='@@ UI command log: NOT a Typst source diff @@\n+ '+JSON.stringify(c)+'\n';
+    }else if(url==='/api/undo'&&history.length){const rev=state.revision;future.push(clone(state));state=history.pop();state.revision=rev+1;}
+    else if(url==='/api/redo'&&future.length){const rev=state.revision;history.push(clone(state));state=future.pop();state.revision=rev+1;}
+    return response({snapshot:snapshot()});
+  };
+})();
+</script><script>/* Small DOM/SVG interaction shell. Rust is authoritative for every source edit.
+ * No framework, CDN, Node build, or diagram model duplicated on disk. */
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const app = {snapshot:null, token:'', selection:null, list:'nodes', busy:false,
+    zoom:1, pan:{x:0,y:0}, size:{w:600,h:400}, svg:null, markers:new Map(),
+    nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
+    locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
+    mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE};
+  let toastTimer;
+  const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
+  const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
+  const center = b => ({x:b.x+b.w/2,y:b.y+b.h/2});
+  const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
+  const diagram = () => app.snapshot?.diagram || {nodes:[], edges:[], warnings:[]};
+  const parameters = () => app.snapshot?.parameters || [];
+  const graphGestures = () => app.snapshot?.capabilities?.graph_gestures ?? !!app.snapshot?.diagram;
+  function notify(message, error=false) {
+    $('status').textContent=message;
+    if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
+  }
+  function snap(v,event={}) {return $('snap').checked&&!event.altKey?Math.round(v/Number($('grid-step').value))*Number($('grid-step').value):v;}
+  function screenToSvg(x,y) {
+    const matrix=app.svg?.getScreenCTM();
+    if(!matrix)throw new Error('Preview transform is unavailable');
+    return new DOMPoint(x,y).matrixTransform(matrix.inverse());
+  }
+  function worldToSvg(p) {
+    const b=app.basis;return {x:b.o.x+b.x.x*p.x+b.y.x*p.y,y:b.o.y+b.x.y*p.x+b.y.y*p.y};
+  }
+  function svgToWorld(p) {
+    const b=app.basis,dx=p.x-b.o.x,dy=p.y-b.o.y,det=b.x.x*b.y.y-b.x.y*b.y.x;
+    return {x:(dx*b.y.y-dy*b.y.x)/det,y:(dy*b.x.x-dx*b.x.y)/det};
+  }
+  function pointerWorld(e){return svgToWorld(screenToSvg(e.clientX,e.clientY));}
+  function paintTransform(){ $('paper').style.transform=`translate(${app.pan.x}px, ${app.pan.y}px) scale(${app.zoom})`;$('zoom').textContent=`${Math.round(app.zoom*100)}%`; }
+  function fit(){const v=$('viewport');app.zoom=Math.max(.08,Math.min(2.5,(v.clientWidth-75)/app.size.w,(v.clientHeight-75)/app.size.h));app.pan={x:(v.clientWidth-app.size.w*app.zoom)/2,y:(v.clientHeight-app.size.h*app.zoom)/2-5};paintTransform();drawOverlay();}
+  function zoomBy(factor,x,y){const v=$('viewport').getBoundingClientRect();x=x??v.width/2;y=y??v.height/2;const z=Math.max(.08,Math.min(6,app.zoom*factor)),r=z/app.zoom;app.pan={x:x-(x-app.pan.x)*r,y:y-(y-app.pan.y)*r};app.zoom=z;paintTransform();drawOverlay();}
+  function markerBox(n,svg){
+    const b=n.getBBox(),m=svg.getScreenCTM().inverse().multiply(n.getScreenCTM());
+    const corners=[[b.x,b.y],[b.x+b.width,b.y],[b.x,b.y+b.height],[b.x+b.width,b.y+b.height]].map(([x,y])=>new DOMPoint(x,y).matrixTransform(m));
+    const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
+    return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+  }
+  function sanitizeSvg(root){
+    for(const n of [...root.querySelectorAll('*')]){
+      if(['script','foreignObject','iframe','style','animate','set','animateTransform','animateMotion'].includes(n.localName)){n.remove();continue;}
+      for(const a of [...n.attributes]){
+        const key=a.localName.toLowerCase();
+        if(key.startsWith('on'))n.removeAttributeNode(a);
+        if((key==='href'||key==='src')&&!a.value.startsWith('#')&&!a.value.startsWith('data:image/'))n.removeAttributeNode(a);
+      }
+    }
+  }
+  function mountSvg(text){
+    const doc=new DOMParser().parseFromString(text,'image/svg+xml');
+    if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw new Error('Malformed SVG preview');
+    sanitizeSvg(doc.documentElement);
+    const svg=document.importNode(doc.documentElement,true);
+    $('figure').replaceChildren(svg);app.svg=svg;
+    const vb=svg.viewBox.baseVal;
+    if(!(vb.width>0&&vb.height>0))throw new Error('SVG has no valid viewBox');
+    app.size={w:vb.width,h:vb.height};
+    $('paper').style.width=`${vb.width}px`;$('paper').style.height=`${vb.height}px`;$('paper').style.display='block';
+    $('overlay').setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+    app.basis=null;app.nodeRects=new Map();app.edgePoints=new Map();app.labelRects=new Map();app.locked=new Set();
+    $('empty').hidden=true;
+    if(!graphGestures()){
+      if(app.first){fit();app.first=false;}else paintTransform();
+      return;
+    }
+    app.markers=new Map();
+    for(const n of [...svg.querySelectorAll('[stroke]')]){
+      const stroke=n.getAttribute('stroke')?.toLowerCase();
+      const width=parseFloat(n.getAttribute('stroke-width')||'0');
+      if(!/^#a[0-3][0-9a-f]{4}$/.test(stroke)||Math.abs(width-.00012345)>.000003)continue;
+      if(app.markers.has(stroke.slice(1)))throw new Error('Duplicate preview marker');
+      app.markers.set(stroke.slice(1),markerBox(n,svg));n.remove();
+    }
+    const o=app.markers.get('a00000'),x=app.markers.get('a00001'),y=app.markers.get('a00002');
+    if(!o||!x||!y)throw new Error('Source/preview fiducials are missing. Editing is disabled; this is not an instrumented render.');
+    const c=center(o),cx=center(x),cy=center(y);
+    app.basis={o:c,x:{x:(cx.x-c.x)/10,y:(cx.y-c.y)/10},y:{x:(cy.x-c.x)/10,y:(cy.y-c.y)/10}};
+    const b=app.basis;
+    if(Math.abs(b.x.x*b.y.y-b.x.y*b.y.x)<1e-8)throw new Error('Degenerate preview calibration');
+    app.nodeRects=new Map();app.edgePoints=new Map();app.labelRects=new Map();app.locked=new Set();
+    diagram().nodes.forEach((n,i)=>{
+      const rect=app.markers.get(`a1${i.toString(16).padStart(4,'0')}`);
+      if(!rect){app.locked.add(n.id);return;}
+      app.nodeRects.set(n.id,rect);
+      // Trust measured geometry over an assumed wrapper convention.
+      if(n.editable&&n.position&&distance(center(rect),worldToSvg(n.position))>.25)app.locked.add(n.id);
+    });
+    diagram().edges.forEach((e,i)=>{
+      const p=e.vertices.map((_,j)=>app.markers.get(`a2${(i*256+j).toString(16).padStart(4,'0')}`)).map(b=>b?center(b):null);
+      if(p.every(Boolean))app.edgePoints.set(e.id,p);
+      const label=app.markers.get(`a3${i.toString(16).padStart(4,'0')}`);
+      if(label)app.labelRects.set(e.id,label);
+      e.vertices.forEach((v,j)=>{
+        if(v.kind==='point'&&v.point.editable&&p[j]&&distance(p[j],worldToSvg(v.point))>.25)app.locked.add(`${e.id}:${j}`);
+      });
+    });
+    if(app.first){fit();app.first=false;}else paintTransform();
+    $('empty').hidden=true;
+  }
+  function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
+  function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
+  function select(kind,id){app.selection={kind,id};renderList();renderInspector();drawOverlay();}
+  function startDrag(e,kind,payload){
+    if(app.busy||e.button!==0||!app.basis)return;
+    e.preventDefault();e.stopPropagation();
+    app.drag={kind,...payload,start:pointerWorld(e),screen:{x:e.clientX,y:e.clientY},moved:false};
+    $('viewport').setPointerCapture(e.pointerId);
+  }
+  function drawOverlay(){
+    const overlay=$('overlay');overlay.replaceChildren();if(!app.snapshot||!app.basis)return;
+    const d=diagram(),z=app.zoom;
+    for(const e of d.edges){
+      const points=app.edgePoints.get(e.id);if(!points)continue;
+      const hit=el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'edge-hit','stroke-width':10/z,'data-edge':e.id});
+      hit.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('edge',e.id);});overlay.append(hit);
+    }
+    for(const n of d.nodes){
+      const b=app.nodeRects.get(n.id);if(!b)continue;
+      const selected=app.selection?.kind==='node'&&app.selection.id===n.id;
+      const r=el('rect',{x:b.x-2,y:b.y-2,width:b.w+4,height:b.h+4,rx:3,class:`node-hit${selected?' selected':''}${nodeEditable(n)?'':' locked'}`,'data-node':n.id});
+      r.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('node',n.id);if(nodeEditable(n))startDrag(ev,'node',{node:n,box:b});});overlay.append(r);
+    }
+    if(app.selection?.kind==='edge'){
+      const e=d.edges.find(e=>e.id===app.selection.id),points=e&&app.edgePoints.get(e.id);if(!points)return;
+      overlay.append(el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'route-guide','stroke-width':1.1/z}));
+      points.forEach((p,j)=>{
+        if(!vertexEditable(e,j))return;
+        const h=el('circle',{cx:p.x,cy:p.y,r:5/z,class:'handle','data-waypoint':`${e.id}:${j}`});
+        h.addEventListener('pointerdown',ev=>startDrag(ev,'waypoint',{edge:e,vertex:j,point:e.vertices[j].point}));overlay.append(h);
+      });
+      points.slice(0,-1).forEach((p,j)=>{
+        if(!vertexEditable(e,j)||!vertexEditable(e,j+1))return;
+        const a=e.vertices[j].point,b=e.vertices[j+1].point;
+        const vertical=Math.abs(a.x-b.x)<1e-6,horizontal=Math.abs(a.y-b.y)<1e-6;
+        if(vertical===horizontal)return;
+        const q=points[j+1],mid={x:(p.x+q.x)/2,y:(p.y+q.y)/2};
+        // Offset segment grips from the route: a centered edge label otherwise
+        // captures the same hit target and makes the segment impossible to drag.
+        const grip={x:mid.x-(vertical?12/z:0),y:mid.y-(horizontal?12/z:0)};
+        overlay.append(el('line',{x1:mid.x,y1:mid.y,x2:grip.x,y2:grip.y,class:'route-guide'}));
+        const h=el('rect',{x:grip.x-3.5/z,y:grip.y-3.5/z,width:7/z,height:7/z,class:'handle','data-segment':`${e.id}:${j}`});
+        h.addEventListener('pointerdown',ev=>startDrag(ev,'segment',{edge:e,segment:j,vertical,points:[p,q]}));overlay.append(h);
+      });
+      const label=app.labelRects.get(e.id);
+      if(label&&e.editable&&e.has_label){
+        const p=center(label),h=el('circle',{cx:p.x,cy:p.y,r:5/z,class:'label-handle','data-label':e.id});
+        h.addEventListener('pointerdown',ev=>startDrag(ev,'label',{edge:e,box:label}));overlay.append(h);
+      }
+    }
+  }
+  function nearestSegment(p,points){
+    let best=null;
+    points.slice(0,-1).forEach((a,i)=>{
+      const b=points[i+1],dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy;if(l<1e-9)return;
+      const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l)),q={x:a.x+t*dx,y:a.y+t*dy},dist=distance(p,q);
+      if(!best||dist<best.dist)best={segment:i,fraction:Math.round(t*10000)/10000,p:q,dist};
+    });return best;
+  }
+  function moveDrag(event){
+    const drag=app.drag;if(!drag)return;
+    if(drag.kind==='pan'){
+      const dx=event.clientX-drag.screen.x,dy=event.clientY-drag.screen.y;
+      drag.moved ||= Math.hypot(dx,dy)>3;app.pan={x:drag.pan.x+dx,y:drag.pan.y+dy};paintTransform();return;
+    }
+    if(!app.basis)return;
+    const p=pointerWorld(event),delta={x:p.x-drag.start.x,y:p.y-drag.start.y};
+    drag.moved ||= Math.hypot(event.clientX-drag.screen.x,event.clientY-drag.screen.y)>3;
+    if(!drag.moved)return;
+    $('overlay').querySelector('.drag-ghost')?.remove();
+    if(drag.kind==='node'||drag.kind==='waypoint'){
+      const original=drag.kind==='node'?drag.node.position:drag.point;
+      let x=snap(original.x+delta.x,event),y=snap(original.y+delta.y,event);
+      if(event.shiftKey){if(Math.abs(delta.x)>Math.abs(delta.y))y=original.y;else x=original.x;}
+      drag.command=drag.kind==='node'?{kind:'move_node',id:drag.node.id,x,y}:{kind:'move_waypoint',edge:drag.edge.id,vertex:drag.vertex,x,y};
+      const here=worldToSvg({x,y}),old=worldToSvg(original);
+      const b=drag.kind==='node'?drag.box:{x:old.x-5/app.zoom,y:old.y-5/app.zoom,w:10/app.zoom,h:10/app.zoom};
+      $('overlay').append(el('rect',{x:b.x+here.x-old.x,y:b.y+here.y-old.y,width:b.w,height:b.h,rx:3,class:'drag-ghost'}));
+      notify(`${drag.kind==='node'?drag.node.id:'Waypoint'} → x ${x.toFixed(2)} mm, y ${y.toFixed(2)} mm · release to compile`);
+    }else if(drag.kind==='segment'){
+      const d=snap(drag.vertical?delta.x:delta.y,event);
+      drag.command={kind:'move_segment',edge:drag.edge.id,segment:drag.segment,delta:d};
+      const zero=worldToSvg({x:0,y:0}),q=worldToSvg({x:drag.vertical?d:0,y:drag.vertical?0:d});
+      $('overlay').append(el('polyline',{points:drag.points.map(p=>`${p.x+q.x-zero.x},${p.y+q.y-zero.y}`).join(' '),class:'drag-ghost',fill:'none','stroke-width':3/app.zoom}));
+      notify(`Orthogonal segment offset ${d.toFixed(2)} mm · release to compile`);
+    }else if(drag.kind==='label'){
+      const nearest=nearestSegment(screenToSvg(event.clientX,event.clientY),app.edgePoints.get(drag.edge.id));if(!nearest)return;
+      drag.command={kind:'set_label',edge:drag.edge.id,segment:nearest.segment,fraction:nearest.fraction};
+      $('overlay').append(el('circle',{cx:nearest.p.x,cy:nearest.p.y,r:7/app.zoom,class:'drag-ghost'}));
+      notify(`Label → segment ${nearest.segment}, fraction ${nearest.fraction.toFixed(2)} · release to compile`);
+    }
+  }
+  async function endDrag(){const drag=app.drag;if(!drag)return;app.drag=null;$('viewport').classList.remove('panning');drawOverlay();if(drag.moved&&drag.command)await post('/api/edit',{command:drag.command});else if(drag.kind==='pan'&&!drag.moved){app.selection=null;renderList();renderInspector();drawOverlay();}}
+  function renderList(){
+    if(!app.snapshot)return;const d=diagram(),root=$('elements'),query=$('search').value.toLowerCase();root.replaceChildren();
+    const items=app.list==='parameters'?parameters():app.list==='nodes'?d.nodes:d.edges;
+    $('node-count').textContent=d.nodes.length;$('edge-count').textContent=d.edges.length;$('parameter-count').textContent=parameters().length;$('element-count').textContent=d.nodes.length+d.edges.length+parameters().length;
+    if(!items.length)root.append(html('p','inspector-hint',app.list==='parameters'?'No declared controls in this source. Add studio.param declarations to expose layout or style values.':'No recognized '+app.list+'. The Typst preview remains available; use Controls for declared parameters.'));
+    for(const item of items){
+      const name=app.list==='parameters'?(item.label||item.id):app.list==='nodes'?item.id:edgeName(item);if(!`${name} ${item.id} ${item.title||''}`.toLowerCase().includes(query))continue;
+      const kind=app.list==='parameters'?'parameter':app.list==='nodes'?'node':'edge',button=html('button',`element${app.selection?.kind===kind&&app.selection.id===item.id?' active':''}`);
+      button.dataset.element=item.id;button.title=item.title||name;button.append(html('span','kind-icon',kind==='parameter'?'⚙':kind==='node'?'▭':'↗'),html('span','element-name',name),html('span','line',String(item.line||'')));
+      button.addEventListener('click',()=>select(kind,item.id));root.append(button);
+    }
+  }
+  function edgeName(e){const name=v=>v?.kind==='anchor'?v.name:'point';return `${name(e.vertices[0])} → ${name(e.vertices.at(-1))}`;}
+  function inputNumber(id,value,label){const wrapper=html('label',null,label),input=html('input');input.id=id;input.type='number';input.step='0.5';input.value=Number(value.toFixed(4));wrapper.append(input);return wrapper;}
+  function renderParameter(root, item){
+    root.append(html('div','selection-type','DECLARED CONTROL'),html('h2','selection-name',item.label||item.id),html('div','source-line',`Source line ${item.line} · ${item.id}`));
+    const label=html('label','field-label',item.unit?`Value · ${item.unit}`:'Value'),input=html('input');
+    input.id='parameter-value';label.htmlFor=input.id;
+    if(item.kind==='bool'){input.type='checkbox';input.checked=item.value;}
+    else if(item.kind==='color'){input.type='text';input.value=item.value;input.pattern='#[0-9a-fA-F]{6}';input.placeholder='#d8eadd';}
+    else{input.type='number';input.value=item.value;input.step=item.step??'any';if(item.min!=null)input.min=item.min;if(item.max!=null)input.max=item.max;}
+    input.disabled=app.busy||!app.snapshot.preview_current;
+    const apply=html('button','fullwidth','Apply control');apply.id='apply-parameter';apply.disabled=input.disabled;
+    apply.onclick=()=>{
+      if(!input.reportValidity())return;
+      const value=item.kind==='bool'?input.checked:item.kind==='color'?input.value:Number(input.value);
+      if(input.type==='number'&&(!input.value.trim()||!Number.isFinite(value)))return;
+      post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}});
+    };
+    root.append(label,input,apply,html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
+  }
+  function renderInspector(){
+    const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
+    if(sel?.kind==='parameter'){
+      const item=parameters().find(p=>p.id===sel.id);
+      if(item){renderParameter(root,item);return;}
+      app.selection=null;
+    }
+    if(!app.selection){root.append(html('div','inspector-hint',graphGestures()?'Select a node or connection to edit supported layout properties. Controls exposes declared layout and style parameters.':'This figure is rendered by Typst. Select a declared control to edit its value; undeclared or computed properties remain source-owned.'));return;}
+    const item=(sel.kind==='node'?d.nodes:d.edges).find(n=>n.id===sel.id);if(!item){app.selection=null;renderInspector();return;}
+    root.append(html('div','selection-type',sel.kind==='node'?'NODE':'CONNECTION'),html('h2','selection-name',sel.kind==='node'?item.id:item.id.toUpperCase()),html('div','source-line',`Source line ${item.line} · ${sel.kind==='node'?item.kind:'Fletcher edge'}`));
+    if(sel.kind==='node'){
+      if(item.position){
+        root.append(html('label','field-label','Position · millimetres'));
+        const row=html('div','coordinate-row');row.append(inputNumber('node-x',item.position.x,'X'),inputNumber('node-y',item.position.y,'Y'));root.append(row);
+        for(const id of ['node-x','node-y'])$(id).disabled=!nodeEditable(item);
+        const apply=html('button','fullwidth','Apply position');apply.disabled=!nodeEditable(item);
+        apply.addEventListener('click',()=>{const x=Number($('node-x').value),y=Number($('node-y').value);if(Number.isFinite(x)&&Number.isFinite(y))post('/api/edit',{command:{kind:'move_node',id:item.id,x,y}});});root.append(apply);
+      }
+      root.append(html('p','field-note',nodeEditable(item)?'Y increases downwards. Shift-drag locks one axis. Alt temporarily disables snapping.':(app.locked.has(item.id)?'Measured position does not match the configured wrapper. Editing is locked; check --y-scale or the n() convention.':'This node uses unsupported or elastic coordinates and is read-only.')));
+      if(item.title)root.append(html('label','field-label','Source content'),html('p','inspector-hint',item.title));
+    }else{
+      root.append(html('p','inspector-hint',edgeName(item)),html('label','field-label','Attachment ports'));
+      for(const end of ['start','end']){
+        const v=end==='start'?item.vertices[0]:item.vertices.at(-1),row=html('div','property-row'),selectEl=html('select');
+        for(const p of ['auto','north','south','east','west','north-east','north-west','south-east','south-west']){const o=html('option',null,p);o.value=p;selectEl.append(o);}
+        const resolved=v?.kind==='anchor'?d.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0]:null;
+        const port=resolved?v.name.slice(resolved.id.length).replace(/^\./,''):'auto';selectEl.value=port||'auto';selectEl.disabled=!resolved||!item.editable||app.busy;
+        selectEl.addEventListener('change',()=>post('/api/edit',{command:{kind:'set_port',edge:item.id,end,port:selectEl.value}}));row.append(html('span',null,end==='start'?'From':'To'),selectEl);root.append(row);
+      }
+      root.append(html('p','field-note','Green circles move literal waypoints. Small squares move orthogonal segments whose ends are both literal points. Amber moves the existing label.'));
+      if(item.has_label){
+        root.append(html('label','field-label','Label placement'));
+        const pos=item.label_position||[0,.5],row=html('div','coordinate-row');row.append(inputNumber('label-segment',pos[0],'Segment (0-based)'),inputNumber('label-fraction',pos[1],'Fraction'));root.append(row);$('label-segment').step='1';$('label-fraction').step='.05';
+        const button=html('button','fullwidth','Apply label position');button.disabled=!item.editable||app.busy;button.addEventListener('click',()=>post('/api/edit',{command:{kind:'set_label',edge:item.id,segment:Number($('label-segment').value),fraction:Number($('label-fraction').value)}}));root.append(button);
+      }
+    }
+  }
+  function refresh(snapshot){
+    app.snapshot=snapshot;$('filename').textContent=snapshot.filename;$('dirty').textContent=snapshot.dirty?'Unsaved layout':'Source unchanged';$('dirty').className=`pill${snapshot.dirty?' modified':''}`;
+    $('revision').textContent=`Revision ${snapshot.revision}`;
+    const pages=snapshot.pages?.length?snapshot.pages:snapshot.svg?[snapshot.svg]:[];
+    app.page=Math.min(app.page,Math.max(0,pages.length-1));
+    const picker=$('page-select');picker.hidden=pages.length<2;picker.replaceChildren();
+    pages.forEach((_,i)=>{const option=html('option',null,`Page ${i+1} / ${pages.length}`);option.value=i;picker.append(option);});picker.value=app.page;
+    const svg=pages[app.page],gestures=graphGestures();
+    if(svg){
+      if(svg!==app.mountedSvg||gestures!==app.mountedGestures){
+        app.mappingError='';
+        try{mountSvg(svg);}catch(e){app.mappingError=e.message;notify(e.message,true);app.basis=null;}
+        app.mountedSvg=svg;app.mountedGestures=gestures;
+      }
+    }else{app.mountedSvg=null;app.basis=null;$('paper').style.display='none';$('empty').hidden=false;}
+    $('preview-status').textContent=app.fixture?'UI fixture':(svg?(app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable');
+    $('canvas-hint').textContent=app.basis?'Drag a node · Select an edge for routes · Space + drag to pan':'Use Controls for declared parameters · Scroll to zoom · Drag to pan';
+    $('undo').disabled=app.busy||!snapshot.undo;$('redo').disabled=app.busy||!snapshot.redo;
+    $('save').disabled=app.fixture||app.busy||!snapshot.dirty||!snapshot.preview_current||!!app.mappingError;
+    $('render').disabled=app.busy;$('download').disabled=!snapshot.source;
+    const warnings=[...(snapshot.warnings||diagram().warnings)];if(app.mappingError)warnings.push(app.mappingError);if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
+    $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
+    $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
+    for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
+    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderList();renderInspector();drawOverlay();
+  }
+  async function post(path,body={}){
+    if(app.busy)return;
+    app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
+    try{
+      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({revision:app.snapshot.revision,...body})});
+      const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Request failed'),{snapshot:data.snapshot});
+      app.busy=false;refresh(data.snapshot);
+      notify(path==='/api/save'?(data.backup?`Saved source. Backup: ${data.backup}`:'No source changes to save.'):(app.fixture?'UI fixture updated. This did not execute Rust or Typst.':'Layout compiled. Original source stays unchanged until Save.'));
+    }catch(e){app.busy=false;if(e.snapshot)refresh(e.snapshot);else refresh(app.snapshot);notify(e.message,true);}
+    finally{$('busy-overlay').hidden=true;}
+  }
+  $('viewport').addEventListener('pointerdown',e=>{if(!app.busy&&((app.space&&e.button===0)||e.button===1)){e.preventDefault();e.stopPropagation();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}},{capture:true});
+  $('viewport').addEventListener('pointerdown',e=>{if(app.busy||e.target.closest?.('.handle,.label-handle,.node-hit,.edge-hit'))return;if(e.button===0||e.button===1){e.preventDefault();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}});
+  $('viewport').addEventListener('pointermove',moveDrag);$('viewport').addEventListener('pointerup',endDrag);$('viewport').addEventListener('pointercancel',()=>{app.drag=null;drawOverlay();});
+  $('viewport').addEventListener('wheel',e=>{e.preventDefault();const b=$('viewport').getBoundingClientRect();zoomBy(Math.exp(-e.deltaY*.001),e.clientX-b.left,e.clientY-b.top);},{passive:false});
+  $('fit').onclick=fit;$('zoom-in').onclick=()=>zoomBy(1.2);$('zoom-out').onclick=()=>zoomBy(1/1.2);
+  $('undo').onclick=()=>post('/api/undo');$('redo').onclick=()=>post('/api/redo');$('render').onclick=()=>post('/api/render');$('save').onclick=()=>post('/api/save');
+  $('search').addEventListener('input',renderList);
+  function showList(kind){app.list=kind;for(const tab of ['nodes','edges','parameters'])$(`${tab}-tab`).classList.toggle('active',kind===tab);renderList();}
+  for(const kind of ['nodes','edges','parameters'])$(`${kind}-tab`).onclick=()=>showList(kind);
+  $('page-select').onchange=()=>{app.page=Number($('page-select').value);app.first=true;refresh(app.snapshot);};
+  for(const tab of ['diff','diagnostics'])$(`${tab}-tab`).onclick=()=>{$('diff').hidden=tab!=='diff';$('diagnostics').hidden=tab!=='diagnostics';$('diff-tab').classList.toggle('active',tab==='diff');$('diagnostics-tab').classList.toggle('active',tab==='diagnostics');};
+  $('download').onclick=()=>{if(!app.snapshot)return;const u=URL.createObjectURL(new Blob([app.snapshot.source],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=app.snapshot.filename.replace(/\.typ$/,'.draft.typ');a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const redo=e.shiftKey;if(!$(redo?'redo':'undo').disabled)post(redo?'/api/redo':'/api/undo');return;}
+    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
+    if(e.code==='Space'){e.preventDefault();app.space=true;}
+    const step=e.shiftKey?5:.5,delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];
+    if(delta&&app.selection?.kind==='node'&&!app.busy){const n=diagram().nodes.find(n=>n.id===app.selection.id);if(n&&nodeEditable(n)){e.preventDefault();post('/api/edit',{command:{kind:'move_node',id:n.id,x:n.position.x+delta[0],y:n.position.y+delta[1]}});}}
+  });
+  document.addEventListener('keyup',e=>{if(e.code==='Space')app.space=false;});
+  window.addEventListener('beforeunload',e=>{if(app.snapshot?.dirty&&!app.fixture){e.preventDefault();e.returnValue='';}});
+  new ResizeObserver(()=>{if(app.svg&&!app.drag)fit();}).observe($('viewport'));
+  if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
+  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;refresh(data.snapshot);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
+  // Read-only observation seam for the browser smoke test; never accepts edits.
+  window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});
+})();
+</script></body>
+</html>

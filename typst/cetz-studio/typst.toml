@@ -1,0 +1,11 @@
+[package]
+name = "cetz-studio"
+version = "0.1.0"
+compiler = "0.14.2"
+entrypoint = "lib.typ"
+authors = ["Jan Duchscherer"]
+license = "MIT"
+description = "Composable CeTZ and Fletcher primitives for source-preserving diagram editing."
+repository = "https://github.com/JanDuchscherer104/cetz-studio"
+categories = ["visualization", "components"]
+keywords = ["cetz", "fletcher", "diagram", "graphics", "editor"]
