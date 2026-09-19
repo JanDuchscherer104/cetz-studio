@@ -132,3 +132,12 @@ and reusable editor foundations.
 
 New project code is MIT. Dependencies and the attributed ARIA source fixture
 retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Optional automatic edge routing
+
+Open `examples/routing.typ`, select a connection and use **Automatic edge routing**
+in the inspector. Preview selected/checked/all eligible edges with configurable
+clearance, inspect the orange proposal, then **Apply proposal** and explicitly
+**Save source**. Nodes stay fixed; unsupported edges report why they cannot be
+routed. Apply is one undoable, compiled transaction. Nothing reroutes during
+ordinary dragging. See [routing contracts, dependency choice and verification](docs/routing.md).

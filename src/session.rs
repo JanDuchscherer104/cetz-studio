@@ -165,6 +165,9 @@ impl Session {
 
     pub fn edit(&mut self, expected: u64, command: edit::Command) -> Result<()> {
         self.check_revision(expected)?;
+        if matches!(&command, edit::Command::ApplyRoutes { .. }) {
+            self.check_disk()?;
+        }
         let parameter_command = matches!(&command, edit::Command::SetParameter { .. });
         if !parameter_command {
             ensure!(
@@ -197,6 +200,15 @@ impl Session {
                 rendered.instrumented && rendered.pages.len() == 1,
                 "Graph edit could not be verified against an instrumented single-page preview"
             );
+        }
+        if let edit::Command::ApplyRoutes { routes, geometry } = &command {
+            let next_diagram = diagram
+                .as_ref()
+                .context("Routed graph is not source-editable")?;
+            let measured =
+                crate::routing::measure(&self.compiler, &self.path, &next, next_diagram)?;
+            crate::routing::verify_fixed_geometry(geometry, &measured, routes, next_diagram)?;
+            self.check_disk()?;
         }
         self.undo.push(self.source.clone());
         if self.undo.len() > 64 {

@@ -4,3 +4,14 @@
 .list-tabs button{padding:7px 5px;min-width:0}
 #inspector>input{margin:8px 0 12px}
 #inspector>input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+
+/* Proposed routes are an overlay, never a replacement for the Typst preview. */
+.routing-panel{margin:16px 0;padding:16px 20px;border-top:1px solid var(--border,#dce3eb);border-bottom:1px solid var(--border,#dce3eb)}
+.routing-panel h3{font-size:12px;margin:0 0 12px;font-weight:650}
+.routing-panel>select,.routing-panel>input{width:100%;margin-bottom:8px}
+.routing-actions{display:flex;gap:6px;margin-top:8px}.routing-actions button{flex:1;font-size:11px}
+.routing-proposal{fill:none;stroke:#d27b1f;stroke-dasharray:7 4;stroke-linejoin:round;pointer-events:none}
+.routing-panel.has-proposal{background:#fff8ed}
+#routing-choices{max-height:130px;overflow:auto;margin:8px 0}
+#routing-choices label{display:block;font-size:11px;padding:4px 0;overflow-wrap:anywhere}
+#routing-reason{color:#a43827}#routing-status{min-height:36px}

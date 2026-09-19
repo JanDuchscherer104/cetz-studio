@@ -9,6 +9,7 @@
     nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE};
+  const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
   const html = (tag, cls, text) => {const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -107,7 +108,7 @@
   }
   function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
   function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
-  function select(kind,id){app.selection={kind,id};renderList();renderInspector();drawOverlay();}
+  function select(kind,id){app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();}
   function startDrag(e,kind,payload){
     if(app.busy||e.button!==0||!app.basis)return;
     e.preventDefault();e.stopPropagation();
@@ -128,6 +129,7 @@
       const r=el('rect',{x:b.x-2,y:b.y-2,width:b.w+4,height:b.h+4,rx:3,class:`node-hit${selected?' selected':''}${nodeEditable(n)?'':' locked'}`,'data-node':n.id});
       r.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('node',n.id);if(nodeEditable(n))startDrag(ev,'node',{node:n,box:b});});overlay.append(r);
     }
+    routing?.draw(overlay);
     if(app.selection?.kind==='edge'){
       const e=d.edges.find(e=>e.id===app.selection.id),points=e&&app.edgePoints.get(e.id);if(!points)return;
       overlay.append(el('polyline',{points:points.map(p=>`${p.x},${p.y}`).join(' '),class:'route-guide','stroke-width':1.1/z}));
@@ -290,15 +292,15 @@
     $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
-    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderList();renderInspector();drawOverlay();
+    $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderList();renderInspector();routing?.refresh();drawOverlay();
   }
   async function post(path,body={}){
     if(app.busy)return;
     app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
     try{
-      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({revision:app.snapshot.revision,...body})});
+      const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,...body})});
       const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Request failed'),{snapshot:data.snapshot});
-      app.busy=false;refresh(data.snapshot);
+      app.busy=false;app.sessionId=data.session_id??app.sessionId;refresh(data.snapshot);
       notify(path==='/api/save'?(data.backup?`Saved source. Backup: ${data.backup}`:'No source changes to save.'):(app.fixture?'UI fixture updated. This did not execute Rust or Typst.':'Layout compiled. Original source stays unchanged until Save.'));
     }catch(e){app.busy=false;if(e.snapshot)refresh(e.snapshot);else refresh(app.snapshot);notify(e.message,true);}
     finally{$('busy-overlay').hidden=true;}
@@ -328,7 +330,7 @@
   window.addEventListener('beforeunload',e=>{if(app.snapshot?.dirty&&!app.fixture){e.preventDefault();e.returnValue='';}});
   new ResizeObserver(()=>{if(app.svg&&!app.drag)fit();}).observe($('viewport'));
   if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
-  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;refresh(data.snapshot);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
+  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;app.sessionId=data.session_id;refresh(data.snapshot);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
   // Read-only observation seam for the browser smoke test; never accepts edits.
   window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});
 })();
