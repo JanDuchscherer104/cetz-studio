@@ -15,8 +15,11 @@ window.CetzRouting = {
     }
     function paint(){
       const running=!!status?.routing?.running;
+      const ids=selectedIds(), eligibility=new Map((status?.eligibility||[]).map(e=>[e.edge,e]));
+      const unsupported=ids.some(id=>!eligibility.get(id)?.eligible);
+      const tooMany=ids.length>32;
       $('routing-clearance').disabled=requesting||running;
-      $('routing-preview').disabled=app.fixture||app.busy||requesting||running||!status?.available||!app.basis||selectedIds().length===0;
+      $('routing-preview').disabled=app.fixture||app.busy||requesting||running||!status?.available||!app.basis||!ids.length||tooMany||unsupported;
       $('routing-apply').disabled=app.busy||requesting||!proposal||!matches(proposal);
       $('routing-discard').disabled=requesting||(!running&&!proposal);
       $('routing-choices').hidden=$('routing-scope').value!=='checked';
@@ -26,7 +29,7 @@ window.CetzRouting = {
         !status?.available?'Automatic routing requires a current, single-page Fletcher preview.':'Nodes stay fixed. Routes are independent; crossings and labels are not avoided.');
       $('routing-panel').classList.toggle('has-proposal',!!proposal);
       const selected=(status?.eligibility||[]).find(e=>e.edge===app.selection?.id);
-      $('routing-reason').textContent=$('routing-scope').value==='selected'&&selected&&!selected.eligible?selected.reason||'Unsupported edge':'';
+      $('routing-reason').textContent=tooMany?'Select at most 32 edges per routing proposal. Use Checked edges to choose a smaller batch.':$('routing-scope').value==='selected'&&selected&&!selected.eligible?selected.reason||'Unsupported edge':'';
     }
     function choices(){
       const list=$('routing-choices');list.replaceChildren();

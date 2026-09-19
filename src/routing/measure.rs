@@ -32,8 +32,9 @@ pub fn measure(
         .tempfile_in(original.parent().context("Missing figure directory")?)?;
     write!(query, "{}\n{}", include_str!("measure.typ"), query_source)?;
     query.flush()?;
-    let stdout = NamedTempFile::new()?;
-    let stderr = NamedTempFile::new()?;
+    let parent = original.parent().context("Missing figure directory")?;
+    let stdout = NamedTempFile::new_in(parent)?;
+    let stderr = NamedTempFile::new_in(parent)?;
     let mut command = Command::new(&compiler.executable);
     command
         .arg("query")
