@@ -245,7 +245,7 @@ def main() -> None:
                     page.locator('#open-project').click()
                     wait_condition(page, "document.querySelector('#filename').textContent === 'a-broken.typ'")
                     wait_idle(page)
-                    check(api_state(app.origin)['project']['root'] == str(other), 'Open folder adopts the chosen root even when its initial figure has diagnostics')
+                    check(Path(api_state(app.origin)['project']['root']).resolve() == other.resolve(), 'Open folder adopts the chosen root even when its initial figure has diagnostics')
                     page.locator('[data-project-file="z-readable.typ"]').click()
                     wait_condition(page, "document.querySelector('#filename').textContent === 'z-readable.typ'")
                     wait_idle(page)
