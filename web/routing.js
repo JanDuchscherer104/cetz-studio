@@ -15,6 +15,7 @@ window.CetzRouting = {
     }
     function paint(){
       const running=!!status?.routing?.running;
+      $('routing-clearance').disabled=requesting||running;
       $('routing-preview').disabled=app.fixture||app.busy||requesting||running||!status?.available||!app.basis||selectedIds().length===0;
       $('routing-apply').disabled=app.busy||requesting||!proposal||!matches(proposal);
       $('routing-discard').disabled=requesting||(!running&&!proposal);
@@ -72,7 +73,7 @@ window.CetzRouting = {
     $('routing-clearance').onchange=()=>{
       // A displayed proposal retains its original clearance; changing controls
       // explicitly discards it rather than relabelling old geometry.
-      if(proposal)request('/api/routing/discard');
+      if(proposal||status?.routing?.running)request('/api/routing/discard');
     };
     return {
       refresh(){

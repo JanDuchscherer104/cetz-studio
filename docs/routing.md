@@ -52,7 +52,7 @@ Evaluated on 19 September 2026 against primary upstream documentation/source:
 | Option | What is reused | Deployment / decision |
 | --- | --- | --- |
 | [libavoid-js 0.5.0-beta.5](https://github.com/Aksem/libavoid-js) | Dedicated incremental obstacle-aware routing, C++ libavoid compiled to WebAssembly | Requires a JavaScript/WASM runtime and sidecar assets. Upstream specifies LGPL-2.1-or-later; distributing it requires preserving the applicable notices and source/relinking obligations. Attractive for future crossing/nudging features, but not selected for this native Rust service. |
-| [ELK libavoid integration](https://eclipse.dev/elk/blog/posts/2025/25-09-10-libavoid.html) | Fixed-node orthogonal routing | This documented integration uses a Java module and a separate native `libavoid-server`; it is not a routing backend automatically included in elkjs. Adds runtime/process packaging beyond this service. Not selected. |
+| [ELK libavoid integration](https://eclipse.dev/elk/blog/posts/2022/22-11-17-libavoid.html) | Fixed-node orthogonal routing | This documented integration uses a Java module and a separate native `libavoid-server`; it is not a routing backend automatically included in elkjs. Adds runtime/process packaging beyond this service. Not selected. |
 | [pathfinding 4.15.0](https://github.com/evenfurther/pathfinding/tree/v4.15.0) | Tested A* implementation over a caller-supplied implicit graph | Selected, exactly pinned in Cargo.toml and resolved in Cargo.lock. Dual MIT / Apache-2.0; used under MIT. Rust MSRV 1.87, below the pinned Typst parser's Rust 1.89 requirement. No WASM, C++ compiler, Node build, or new runtime service. |
 
 The selected crate is a search foundation, **not a complete diagram router**.

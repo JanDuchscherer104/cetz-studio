@@ -113,8 +113,10 @@ def main():
                 check(browser_snapshot(page)['source']==saved_draft,"failed routing retains draft")
                 # Query delay proves responsiveness, one-slot bound and stale-result handling.
                 delay.touch()
-                result=api(page,'/api/routing/propose',{'edges':['e0'],'clearance_mm':2})
-                check(result['status']==200,"routing worker starts asynchronously")
+                page.locator('#routing-preview').click()
+                wait_condition(page,"document.getElementById('routing-clearance').disabled")
+                check(api(page,'/api/routing/status')['data']['routing']['running'],"routing worker starts asynchronously")
+                check(page.locator('#routing-clearance').is_disabled(),"pending proposal clearance cannot be relabelled")
                 started=time.monotonic();api(page,'/api/state');timings['state_during_query_ms']=(time.monotonic()-started)*1000
                 check(timings['state_during_query_ms']<800,"state stays responsive during delayed native query")
                 zoom=page.locator('#zoom').inner_text();page.locator('#zoom-in').click()

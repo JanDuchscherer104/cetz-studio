@@ -58,7 +58,8 @@ and explicit parameters. No bulk migration of those sources is performed.
 | Paths | Existing waypoints, ports, label segment/fraction | Proven direct Fletcher literals |
 | Style | Fill, stroke width/color, opacity, text size | Declared values; no automatic inherited-theme rewrites |
 | Generated figures | Radius, spacing, scale, visibility | Declared parameters preserve computed relationships |
-| Future structural editing | Add/remove nodes and route vertices, automatic routing, groups | Not implemented in 0.1 |
+| Automatic routing | Preview obstacle-aware routes for selected or all eligible edges | Measured bounds and cardinal ports; fixed-node remeasurement on Apply; see [routing](routing.md) |
+| Future structural editing | Add/remove nodes and route vertices, groups | Not implemented in 0.1 |
 
 Numbers, lengths, hex colors, and booleans provide the initial control interface.
 Enums, gradients, arbitrary rich text, direct shape handles, and angle-specific
@@ -79,7 +80,8 @@ A future scheduler should keep HTTP responsive, coalesce obsolete work, and
 adopt only matching revisions. Incremental compilation is promising, but caches
 must track imports, fonts, package/compiler versions, and data files. A source-only
 cache key is insufficient. Neither a persistent compiler nor a background
-scheduler is claimed in 0.1.
+scheduler is claimed in 0.1. Optional edge-routing proposals use one bounded
+background worker; ordinary compilation and route adoption remain synchronous.
 
 Keep syntax/validation behind the source-edit interface. Tests exercise source
 changes, rollback, capabilities, and round-trips. Avoid a general plugin framework
