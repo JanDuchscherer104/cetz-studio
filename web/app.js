@@ -280,11 +280,28 @@
     root.append(html('label','field-label',kind==='node'?'Text content':'Edge text'));
     for(const field of fields){
       const wrap=html('div','text-field'),label=html('label',null,field.id[0].toUpperCase()+field.id.slice(1)),input=html('textarea');
-      input.id=`${kind}-${field.id}-text`;input.value=field.value??'';input.disabled=app.busy||!field.editable||!structuralEdits();label.htmlFor=input.id;
+      const source=html('textarea','typst-editor'),applySource=html('button','fullwidth','Apply Typst');
+      source.id=`${kind}-${field.id}-source`;source.value=field.source??'';source.spellcheck=false;
+      source.setAttribute('aria-label',`${label.textContent} Typst content`);
+      source.disabled=app.busy||!field.source_editable||!structuralEdits();
+      applySource.id=`apply-${kind}-${field.id}-source`;applySource.disabled=source.disabled;
+      applySource.onclick=async()=>{
+        const draft=source.value;
+        const command=kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:draft}:{kind:'set_edge_source',edge:item.id,field:field.id,source:draft};
+        const result=await post('/api/edit',{command});
+        if(!result){const retained=$(source.id);if(retained){retained.value=draft;retained.focus();}}
+      };
+      label.htmlFor=source.id;wrap.append(label,source,applySource);
+      wrap.append(html('p','field-note','Edit this content expression, including brackets, maths, or composed Typst. Apply compiles the draft; Save writes the file.'));
+      const plain=html('details','plain-text-control');plain.id=`plain-${kind}-${field.id}`;
+      plain.append(html('summary',null,'Plain-text shortcut'));
+      input.id=`${kind}-${field.id}-text`;input.value=field.value??'';input.disabled=app.busy||!field.editable||!structuralEdits();
+      input.setAttribute('aria-label',`${label.textContent} plain text`);
       const apply=html('button','fullwidth','Apply text');apply.id=`apply-${kind}-${field.id}`;apply.disabled=input.disabled;
       apply.onclick=()=>post('/api/edit',{command:kind==='node'?{kind:'set_node_text',id:item.id,field:field.id,text:input.value}:{kind:'set_edge_text',edge:item.id,field:field.id,text:input.value}});
-      wrap.append(label,input,apply);
-      const reason=field.reason||(!structuralEdits()?'Editing needs a verified graph preview. This source remains viewable.':null);if(reason)wrap.append(html('p','read-only-reason',reason));
+      plain.append(input,apply);
+      const reason=field.reason||(!structuralEdits()?'Editing needs a verified graph preview. This source remains viewable.':null);if(reason)plain.append(html('p','read-only-reason',reason));
+      wrap.append(plain);
       root.append(wrap);
     }
   }
