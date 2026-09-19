@@ -1,5 +1,7 @@
 //! Validated commands, not replacement files, cross the browser/Rust boundary.
-use crate::model::{self, Diagram, Point, Scalar, Span, TextEncoding, TextField, Vertex};
+use crate::model::{
+    self, Diagram, EdgeRoute, Point, Scalar, Span, TextEncoding, TextField, Vertex,
+};
 use anyhow::{bail, ensure, Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -17,6 +19,20 @@ pub enum Command {
         vertex: usize,
         x: f64,
         y: f64,
+    },
+    InsertWaypoint {
+        edge: String,
+        segment: usize,
+        x: f64,
+        y: f64,
+    },
+    RemoveWaypoint {
+        edge: String,
+        vertex: usize,
+    },
+    SetEdgeRoute {
+        edge: String,
+        route: EdgeRouteCommand,
     },
     MoveSegment {
         edge: String,
@@ -75,6 +91,13 @@ pub enum Command {
         id: String,
         value: Value,
     },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeRouteCommand {
+    Polyline,
+    Bezier,
 }
 
 #[derive(Clone, Debug)]
@@ -387,6 +410,66 @@ fn edge<'a>(diagram: &'a Diagram, id: &str) -> Result<&'a model::Edge> {
     Ok(e)
 }
 
+fn remove_argument(source: &str, call: &model::Call, argument_index: usize) -> Result<Vec<Patch>> {
+    let argument = call
+        .arguments
+        .get(argument_index)
+        .context("Unknown source argument")?;
+    let expression = &source[argument.outer_span.clone()];
+    ensure!(
+        !expression.contains("/*") && !expression.contains("//"),
+        "Move comments outside the argument before removing it"
+    );
+    let comma = call
+        .commas
+        .iter()
+        .find(|span| span.start >= argument.outer_span.end)
+        .or_else(|| {
+            call.commas
+                .iter()
+                .rev()
+                .find(|span| span.end <= argument.outer_span.start)
+        });
+    let mut patches = vec![Patch {
+        span: argument.outer_span.clone(),
+        replacement: String::new(),
+    }];
+    if let Some(span) = comma {
+        patches.push(Patch {
+            span: span.clone(),
+            replacement: String::new(),
+        });
+    }
+    Ok(patches)
+}
+
+fn vertex_point_source(x: f64, editor_y: f64) -> Result<String> {
+    bounded(x)?;
+    bounded(editor_y)?;
+    Ok(format!("({}mm, {}mm)", number(x), number(-editor_y)))
+}
+
+fn node_position_for_anchor(diagram: &Diagram, vertex: &Vertex) -> Result<(f64, f64)> {
+    let Vertex::Anchor { name, .. } = vertex else {
+        bail!("Bezier auto-controls require named node endpoints")
+    };
+    let id = endpoint(name, diagram).context("Cannot resolve endpoint node")?;
+    let node = diagram
+        .nodes
+        .iter()
+        .find(|candidate| candidate.id == id)
+        .context("Cannot resolve endpoint node")?;
+    let point = node
+        .position
+        .as_ref()
+        .context("Endpoint node has no source position")?;
+    ensure!(
+        point.editable,
+        "Bezier auto-controls require literal physical node positions"
+    );
+    Ok((point.x, point.y))
+}
+
 fn endpoint(name: &str, diagram: &Diagram) -> Option<String> {
     // Longest match allows node IDs containing dots without truncating identity.
     diagram
@@ -422,8 +505,140 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
         } => {
             let e = edge(diagram, id)?;
             match e.vertices.get(*vertex).context("Unknown vertex")? {
-                Vertex::Point { point } => point_patches(point, *x, *y, &mut patches)?,
+                Vertex::Point { point, .. } => point_patches(point, *x, *y, &mut patches)?,
                 _ => bail!("Named endpoints cannot be dragged away from their nodes"),
+            }
+        }
+        Command::InsertWaypoint {
+            edge: id,
+            segment,
+            x,
+            y,
+        } => {
+            let e = edge(diagram, id)?;
+            ensure!(
+                e.waypoint_editable,
+                "{}",
+                e.waypoint_reason
+                    .as_deref()
+                    .unwrap_or("Waypoints are read-only")
+            );
+            ensure!(
+                *segment < e.vertices.len().saturating_sub(1),
+                "Unknown edge segment"
+            );
+            if e.route == EdgeRoute::Bezier {
+                ensure!(
+                    e.vertices.len() < 4,
+                    "Bezier edges support at most two control points"
+                );
+            }
+            let right = &e.vertices[*segment + 1];
+            let argument = e
+                .call
+                .arguments
+                .get(right.argument_index())
+                .context("Waypoint insertion point is unavailable")?;
+            patches.push(Patch {
+                span: argument.outer_span.start..argument.outer_span.start,
+                replacement: format!("{}, ", vertex_point_source(*x, *y)?),
+            });
+        }
+        Command::RemoveWaypoint { edge: id, vertex } => {
+            let e = edge(diagram, id)?;
+            ensure!(
+                e.waypoint_editable,
+                "{}",
+                e.waypoint_reason
+                    .as_deref()
+                    .unwrap_or("Waypoints are read-only")
+            );
+            ensure!(
+                *vertex > 0 && *vertex < e.vertices.len().saturating_sub(1),
+                "Only interior waypoints can be removed"
+            );
+            ensure!(
+                matches!(
+                    e.vertices[*vertex],
+                    Vertex::Point {
+                        point: Point { editable: true, .. },
+                        ..
+                    }
+                ),
+                "Computed waypoints are read-only"
+            );
+            if e.route == EdgeRoute::Bezier {
+                ensure!(
+                    e.vertices.len() > 3,
+                    "A Bezier edge needs at least one control point"
+                );
+            }
+            patches.extend(remove_argument(
+                source,
+                &e.call,
+                e.vertices[*vertex].argument_index(),
+            )?);
+        }
+        Command::SetEdgeRoute { edge: id, route } => {
+            let e = edge(diagram, id)?;
+            ensure!(
+                e.route_editable,
+                "{}",
+                e.route_reason
+                    .as_deref()
+                    .unwrap_or("Route selection is read-only")
+            );
+            let requested = match route {
+                EdgeRouteCommand::Polyline => EdgeRoute::Polyline,
+                EdgeRouteCommand::Bezier => EdgeRoute::Bezier,
+            };
+            if requested != e.route {
+                match requested {
+                    EdgeRoute::Bezier => {
+                        ensure!(
+                            (2..=4).contains(&e.vertices.len()),
+                            "Bezier routing supports one or two control points"
+                        );
+                        if e.vertices.len() == 2 {
+                            let (x0, y0) = node_position_for_anchor(diagram, &e.vertices[0])?;
+                            let (x1, y1) = node_position_for_anchor(diagram, &e.vertices[1])?;
+                            let controls = format!(
+                                "{}, {}, ",
+                                vertex_point_source((2.0 * x0 + x1) / 3.0, (2.0 * y0 + y1) / 3.0)?,
+                                vertex_point_source((x0 + 2.0 * x1) / 3.0, (y0 + 2.0 * y1) / 3.0)?,
+                            );
+                            let last = e
+                                .call
+                                .arguments
+                                .get(e.vertices[1].argument_index())
+                                .context("Bezier control insertion point is unavailable")?;
+                            patches.push(Patch {
+                                span: last.outer_span.start..last.outer_span.start,
+                                replacement: controls,
+                            });
+                        }
+                        patches.push(if let Some(arg) = e.call.named("route") {
+                            Patch {
+                                span: arg.span.clone(),
+                                replacement: "\"bezier\"".into(),
+                            }
+                        } else {
+                            Patch {
+                                span: e.call.args_open + 1..e.call.args_open + 1,
+                                replacement: "route: \"bezier\", ".into(),
+                            }
+                        });
+                    }
+                    EdgeRoute::Polyline => {
+                        let index = e
+                            .call
+                            .arguments
+                            .iter()
+                            .position(|argument| argument.name.as_deref() == Some("route"))
+                            .context("Bezier edge has no route source argument")?;
+                        patches.extend(remove_argument(source, &e.call, index)?);
+                    }
+                }
             }
         }
         Command::MoveSegment {
@@ -435,7 +650,7 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
             let e = edge(diagram, id)?;
             let right = segment.checked_add(1).context("Invalid segment")?;
             let (a, b) = match (e.vertices.get(*segment), e.vertices.get(right)) {
-                (Some(Vertex::Point { point: a }), Some(Vertex::Point { point: b })) => (a, b),
+                (Some(Vertex::Point { point: a, .. }), Some(Vertex::Point { point: b, .. })) => (a, b),
                 _ => bail!("Segment dragging requires two literal waypoints; named endpoints stay attached"),
             };
             if (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() > 1e-6 {
@@ -475,7 +690,7 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
                 _ => bail!("Endpoint must be start or end"),
             }
             .context("Empty edge")?;
-            let Vertex::Anchor { name, span } = v else {
+            let Vertex::Anchor { name, span, .. } = v else {
                 bail!("This endpoint is a literal coordinate, not a named attachment")
             };
             let node = endpoint(name, diagram).context("Cannot resolve endpoint node")?;

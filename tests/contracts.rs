@@ -336,7 +336,7 @@ fn elastic_grid_is_not_mistaken_for_millimetres() {
     )
     .unwrap();
     assert!(d.nodes.iter().all(|n| !n.editable));
-    assert!(matches!(&d.edges[0].vertices[1], Vertex::Point { point } if !point.editable));
+    assert!(matches!(&d.edges[0].vertices[1], Vertex::Point { point, .. } if !point.editable));
 }
 #[test]
 fn custom_routing_is_not_advertised_as_editable() {
