@@ -518,22 +518,20 @@ fn text_field(source: &str, arg: Option<&Argument>, id: &str) -> TextField {
 }
 
 fn node_text_fields(source: &str, call: &Call, positional: &[&Argument]) -> Vec<TextField> {
-    let content = |index: usize| {
-        positional
-            .iter()
-            .filter(|arg| matches!(arg.kind, K::ContentBlock | K::Str))
-            .nth(index)
-            .copied()
-    };
     match call.callee.as_str() {
         "studio.card" => vec![
             text_field(source, positional.get(1).copied(), "title"),
             text_field(source, call.named("body"), "body"),
         ],
-        "n" | "content-at" => vec![
+        "n" => vec![
             text_field(source, positional.get(3).copied(), "title"),
-            text_field(source, call.named("body"), "body"),
+            text_field(
+                source,
+                call.named("body").or_else(|| positional.get(4).copied()),
+                "body",
+            ),
         ],
+        "content-at" => vec![text_field(source, positional.get(3).copied(), "title")],
         "junction" => Vec::new(),
         "node"
         | "f.node"
@@ -543,10 +541,15 @@ fn node_text_fields(source: &str, call: &Call, positional: &[&Argument]) -> Vec<
         | "content-node" => {
             vec![text_field(source, positional.get(1).copied(), "title")]
         }
-        "card" | "addition" | "named-entity" => vec![
-            text_field(source, content(0), "title"),
-            text_field(source, content(1), "body"),
+        "card" | "named-entity" => vec![
+            text_field(source, positional.get(2).copied(), "title"),
+            text_field(source, positional.get(3).copied(), "body"),
         ],
+        "entity" => vec![
+            text_field(source, positional.get(1).copied(), "title"),
+            text_field(source, positional.get(2).copied(), "body"),
+        ],
+        "addition" => Vec::new(),
         _ => Vec::new(),
     }
 }
@@ -687,7 +690,7 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
     );
     let mut calls = Vec::new();
     let import_aliases = import_aliases(&root, source);
-    let (insert_primitives, insertion_reason) = insertion_capabilities(&import_aliases);
+    let (mut insert_primitives, mut insertion_reason) = insertion_capabilities(&import_aliases);
     collect_calls(&root, 0, source, &mut calls)?;
     let roots: Vec<_> = calls
         .iter()
@@ -953,6 +956,28 @@ pub fn parse(source: &str, scale_override: Option<f64>) -> Result<Diagram> {
         });
     }
     ensure!(!nodes.is_empty(), "No named nodes recognized");
+    if matches!(graph.callee.as_str(), "graph" | "diagram")
+        && nodes.iter().any(|node| {
+            matches!(
+                node.kind.as_str(),
+                "n" | "card" | "named-entity" | "entity" | "content-node"
+            ) && node.editable
+                && node
+                    .text_fields
+                    .iter()
+                    .any(|field| field.id == "title" && field.source_editable)
+        })
+    {
+        // A direct, editable node call is a safer template than guessing the
+        // signature of an imported project wrapper such as ARIA's n/card.
+        if !insert_primitives
+            .iter()
+            .any(|item| item == "architecture-node")
+        {
+            insert_primitives.push("architecture-node".into());
+        }
+        insertion_reason = None;
+    }
     ensure!(
         nodes.len() < 4096 && edges.len() < 256 && edges.iter().all(|e| e.vertices.len() < 256),
         "Diagram exceeds prototype limits"

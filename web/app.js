@@ -100,6 +100,23 @@
     viewport.style.setProperty('--grid-minor-color',smallest>=8?'#303b47':'transparent');
   }
   function paintTransform(){ $('paper').style.transform=`translate(${app.pan.x}px, ${app.pan.y}px) scale(${app.zoom})`;$('zoom').textContent=`${Math.round(app.zoom*100)}%`;updateGrid(); }
+  function applyPageBackground(){
+    $('paper').classList.toggle('transparent-page',$('transparent-page').checked);
+  }
+  function identifyPageBackground(svg){
+    const background=svg.firstElementChild;
+    if(!background)return;
+    const fill=(background.getAttribute('fill')||'').replace(/\s/g,'').toLowerCase();
+    const white=['white','#fff','#ffffff','rgb(255,255,255)'].includes(fill);
+    const typstPath=background.localName==='path'&&background.classList.contains('typst-shape');
+    const view=svg.viewBox.baseVal;
+    const fixtureRect=background.localName==='rect'
+      && Number(background.getAttribute('x')||0)===view.x
+      && Number(background.getAttribute('y')||0)===view.y
+      && Number(background.getAttribute('width'))===view.width
+      && Number(background.getAttribute('height'))===view.height;
+    if(typstPath||(white&&fixtureRect))background.classList.add('studio-page-background');
+  }
   function fit(){const v=$('viewport');app.zoom=Math.max(.08,Math.min(2.5,(v.clientWidth-75)/app.size.w,(v.clientHeight-75)/app.size.h));app.pan={x:(v.clientWidth-app.size.w*app.zoom)/2,y:(v.clientHeight-app.size.h*app.zoom)/2-5};paintTransform();drawOverlay();}
   function zoomBy(factor,x,y){const v=$('viewport').getBoundingClientRect();x=x??v.width/2;y=y??v.height/2;const z=Math.max(.08,Math.min(6,app.zoom*factor)),r=z/app.zoom;app.pan={x:x-(x-app.pan.x)*r,y:y-(y-app.pan.y)*r};app.zoom=z;paintTransform();drawOverlay();}
   function markerBox(n,svg){
@@ -126,6 +143,7 @@
     $('figure').replaceChildren(svg);app.svg=svg;
     const vb=svg.viewBox.baseVal;
     if(!(vb.width>0&&vb.height>0))throw new Error('SVG has no valid viewBox');
+    identifyPageBackground(svg);applyPageBackground();
     app.size={w:vb.width,h:vb.height};
     $('paper').style.width=`${vb.width}px`;$('paper').style.height=`${vb.height}px`;$('paper').style.display='block';
     $('overlay').setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
@@ -543,7 +561,7 @@
   $('viewport').addEventListener('pointermove',moveDrag);$('viewport').addEventListener('pointerup',endDrag);$('viewport').addEventListener('pointercancel',()=>{app.drag=null;routing?.dragEnded?.();drawOverlay();});
   $('viewport').addEventListener('wheel',e=>{e.preventDefault();const b=$('viewport').getBoundingClientRect();zoomBy(Math.exp(-e.deltaY*.001),e.clientX-b.left,e.clientY-b.top);},{passive:false});
   $('fit').onclick=fit;$('zoom-in').onclick=()=>zoomBy(1.2);$('zoom-out').onclick=()=>zoomBy(1/1.2);
-  $('show-grid').onchange=updateGrid;$('grid-step').onchange=updateGrid;
+  $('show-grid').onchange=updateGrid;$('grid-step').onchange=updateGrid;$('transparent-page').onchange=applyPageBackground;
   $('undo').onclick=()=>post('/api/undo');$('redo').onclick=()=>post('/api/redo');$('render').onclick=()=>post('/api/render');$('save').onclick=()=>post('/api/save');
   $('add-node').onclick=openGallery;$('add-edge').onclick=openEdgeCreator;
   const primitives=[
@@ -551,7 +569,8 @@
     ['fletcher-ellipse','Fletcher ellipse','A rounded elliptical Fletcher node.','ellipse'],
     ['fletcher-diamond','Fletcher diamond','A decision-shaped Fletcher node.','diamond'],
     ['studio-node','Studio node','A themed general-purpose Studio node.','studio'],
-    ['studio-card','Studio card','A themed title and body card.','card']
+    ['studio-card','Studio card','A themed title and body card.','card'],
+    ['architecture-node','Architecture node','Matches this diagram’s wrapper and style without copying its body.','architecture']
   ];
   for(const [id,name,description,shape] of primitives){
     const button=html('button','primitive-card');button.dataset.primitive=id;

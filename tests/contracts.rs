@@ -768,6 +768,131 @@ fn studio_and_fletcher_node_presets_insert_only_into_matching_diagrams() {
 }
 
 #[test]
+fn architecture_gallery_clones_an_existing_wrapper_without_guessing_its_signature() {
+    let source = "#graph(\n n(1, 2, <a>, [Alpha], body: [details], fill: red), // keep style\n debug: false,\n)";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.insert_primitives, ["architecture-node"]);
+
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "architecture-node".into(),
+            x: 30.0,
+            y: 40.0,
+            name: Some("review".into()),
+            text: Some("Review".into()),
+        },
+    )
+    .unwrap();
+
+    assert!(changed.contains("n(30, 40, <review>, \"Review\", body: [], fill: red)"));
+    assert!(changed.contains("// keep style"));
+    assert!(changed.find("<review>").unwrap() < changed.find("debug: false").unwrap());
+    assert_eq!(model::parse(&changed, None).unwrap().nodes.len(), 2);
+}
+
+#[test]
+fn architecture_gallery_adapts_to_tuple_based_project_wrappers() {
+    let source = "#diagram(\n card((1mm, -2mm), <a>, [Alpha], [details], tint: blue),\n)";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.insert_primitives, ["architecture-node"]);
+
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "architecture-node".into(),
+            x: 12.0,
+            y: 8.0,
+            name: None,
+            text: None,
+        },
+    )
+    .unwrap();
+
+    assert!(changed.contains("card((12mm, -8mm), <node>, \"New node\", [], tint: blue)"));
+    assert_eq!(model::parse(&changed, None).unwrap().nodes.len(), 2);
+}
+
+#[test]
+fn architecture_gallery_replaces_rich_template_title_without_copying_markup() {
+    let source = "#diagram(n(1, 2, <a>, [*Alpha* $x$], body: [secret]))";
+    let diagram = model::parse(source, None).unwrap();
+    assert_eq!(diagram.insert_primitives, ["architecture-node"]);
+
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "architecture-node".into(),
+            x: 10.0,
+            y: 20.0,
+            name: Some("clean".into()),
+            text: Some("Clean title".into()),
+        },
+    )
+    .unwrap();
+
+    assert!(changed.contains("n(10, 20, <clean>, \"Clean title\", body: [])"));
+    assert_eq!(changed.matches("secret").count(), 1);
+}
+
+#[test]
+fn architecture_gallery_clears_a_computed_positional_body() {
+    let source = "#diagram(card((1mm, -2mm), <a>, [Alpha], stack([secret]), tint: blue))";
+    let diagram = model::parse(source, None).unwrap();
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "architecture-node".into(),
+            x: 12.0,
+            y: 8.0,
+            name: Some("clean".into()),
+            text: None,
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("card((12mm, -8mm), <clean>, \"New node\", [], tint: blue)"));
+    assert_eq!(changed.matches("secret").count(), 1);
+}
+
+#[test]
+fn architecture_gallery_clears_a_positional_n_body() {
+    let source = "#diagram(n(1, 2, <a>, [Alpha], stack([secret])))";
+    let diagram = model::parse(source, None).unwrap();
+    let changed = edit::apply(
+        source,
+        &diagram,
+        &Command::InsertNode {
+            primitive: "architecture-node".into(),
+            x: 12.0,
+            y: 8.0,
+            name: Some("clean".into()),
+            text: None,
+        },
+    )
+    .unwrap();
+    assert!(changed.contains("n(12, 8, <clean>, \"New node\", [])"));
+    assert_eq!(changed.matches("secret").count(), 1);
+}
+
+#[test]
+fn architecture_gallery_is_advertised_alongside_direct_fletcher_presets() {
+    let source = "#import \"@preview/fletcher:0.5.8\" as f\n#graph(n(1, 2, <a>, [A]))";
+    let diagram = model::parse(source, None).unwrap();
+    assert!(diagram
+        .insert_primitives
+        .iter()
+        .any(|item| item == "fletcher-rect"));
+    assert!(diagram
+        .insert_primitives
+        .iter()
+        .any(|item| item == "architecture-node"));
+}
+
+#[test]
 fn gallery_requires_a_unique_unshadowed_import_alias() {
     let source = "#import \"@local/cetz-studio:0.1.0\" as studio\n#let studio = (: )\n#diagram(node((0mm, 0mm), [A], name: <a>))";
     let diagram = model::parse(source, None).unwrap();

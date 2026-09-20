@@ -1,6 +1,6 @@
 {
   "scope": "Production browser code with synthetic API/geometry fixture; Rust and Typst NOT executed",
-  "passed": 30,
+  "passed": 34,
   "checks": [
     "Preview visibly identifies itself as an API/geometry fixture",
     "Fixture cannot save source",
@@ -10,6 +10,10 @@
     "Visual grid is enabled by default",
     "Visual grid spacing follows canvas zoom",
     "Grid toggle hides the visual grid without changing snap settings",
+    "Rendered page background is identified conservatively",
+    "Transparency toggle exposes the visual grid through the page",
+    "Transparency hides only the rendered page backdrop",
+    "Opaque mode restores the rendered page backdrop",
     "Node drag previews a measured center or edge alignment guide",
     "Object alignment takes priority over the nearest grid point",
     "Alt temporarily suppresses object alignment guides",

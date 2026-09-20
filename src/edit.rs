@@ -946,37 +946,102 @@ pub fn apply(source: &str, diagram: &Diagram, command: &Command) -> Result<Strin
         } => {
             bounded(*x)?;
             bounded(*y)?;
-            let default_base = match primitive.as_str() {
-                "fletcher-rect" => "rectangle",
-                "fletcher-ellipse" => "ellipse",
-                "fletcher-diamond" => "diamond",
-                "studio-node" => "node",
-                "studio-card" => "card",
-                _ => bail!("Unknown node primitive"),
-            };
-            let id = fresh_id(diagram, name.as_deref(), default_base)?;
-            let label = typst_string(text.as_deref().unwrap_or(default_base))?;
-            let pos = format!("({}mm, {}mm)", number(*x), number(-*y));
-            let expression = match primitive.as_str() {
-                "studio-node" if studio_imported(diagram) => {
-                    format!("studio.node({pos}, {label}, name: <{id}>)")
+            if primitive == "architecture-node" {
+                ensure!(
+                    diagram
+                        .insert_primitives
+                        .iter()
+                        .any(|item| item == "architecture-node"),
+                    "Architecture node insertion is not available for this diagram"
+                );
+                let template = diagram
+                    .nodes
+                    .iter()
+                    .find(|node| {
+                        matches!(
+                            node.kind.as_str(),
+                            "n" | "card" | "named-entity" | "entity" | "content-node"
+                        ) && node.editable
+                            && node
+                                .text_fields
+                                .iter()
+                                .any(|field| field.id == "title" && field.source_editable)
+                    })
+                    .context("This diagram has no editable architecture node template")?;
+                let point = template
+                    .position
+                    .as_ref()
+                    .context("Architecture node template has no source position")?;
+                let id = fresh_id(diagram, name.as_deref(), "node")?;
+                let mut clone_patches = vec![Patch {
+                    span: template.name_span.clone(),
+                    replacement: format!("<{id}>"),
+                }];
+                point_patches(point, *x, *y, &mut clone_patches)?;
+                let title = template
+                    .text_fields
+                    .iter()
+                    .find(|field| field.id == "title" && field.source_editable)
+                    .expect("template predicate guarantees an editable title source");
+                let title_text = text.as_deref().unwrap_or("New node");
+                if title.editable {
+                    text_patch(title, title_text, &mut clone_patches)?;
+                } else {
+                    source_patch(title, &typst_string(title_text)?, &mut clone_patches)?;
                 }
-                "studio-card" if studio_imported(diagram) => {
-                    format!("studio.card({pos}, {label}, body: [], name: <{id}>)")
+                for field in template
+                    .text_fields
+                    .iter()
+                    .filter(|field| field.id != "title" && field.source_editable)
+                {
+                    source_patch(field, "[]", &mut clone_patches)?;
                 }
-                "fletcher-rect" | "fletcher-ellipse" | "fletcher-diamond" => {
-                    let (constructor, shapes) = fletcher_constructor(diagram).context(
-                        "Fletcher presets need an explicit studio, f, or fletcher import alias",
-                    )?;
-                    let shape = primitive.strip_prefix("fletcher-").unwrap();
-                    format!("{constructor}({pos}, {label}, name: <{id}>, shape: {shapes}.{shape})")
+                let call_start = template.call.span.start;
+                let call_end = template.call.span.end;
+                for patch in &mut clone_patches {
+                    ensure!(
+                        patch.span.start >= call_start && patch.span.end <= call_end,
+                        "Architecture node source is not self-contained"
+                    );
+                    patch.span = patch.span.start - call_start..patch.span.end - call_start;
                 }
-                "studio-node" | "studio-card" => {
-                    bail!("Studio presets need an explicit studio import alias")
-                }
-                _ => bail!("Unknown node primitive"),
-            };
-            patches.extend(append_graph_argument(source, diagram, &expression)?);
+                let cloned = apply_patches(&source[call_start..call_end], clone_patches)?;
+                patches.extend(append_graph_argument(source, diagram, &cloned)?);
+            } else {
+                let default_base = match primitive.as_str() {
+                    "fletcher-rect" => "rectangle",
+                    "fletcher-ellipse" => "ellipse",
+                    "fletcher-diamond" => "diamond",
+                    "studio-node" => "node",
+                    "studio-card" => "card",
+                    _ => bail!("Unknown node primitive"),
+                };
+                let id = fresh_id(diagram, name.as_deref(), default_base)?;
+                let label = typst_string(text.as_deref().unwrap_or(default_base))?;
+                let pos = format!("({}mm, {}mm)", number(*x), number(-*y));
+                let expression = match primitive.as_str() {
+                    "studio-node" if studio_imported(diagram) => {
+                        format!("studio.node({pos}, {label}, name: <{id}>)")
+                    }
+                    "studio-card" if studio_imported(diagram) => {
+                        format!("studio.card({pos}, {label}, body: [], name: <{id}>)")
+                    }
+                    "fletcher-rect" | "fletcher-ellipse" | "fletcher-diamond" => {
+                        let (constructor, shapes) = fletcher_constructor(diagram).context(
+                            "Fletcher presets need an explicit studio, f, or fletcher import alias",
+                        )?;
+                        let shape = primitive.strip_prefix("fletcher-").unwrap();
+                        format!(
+                            "{constructor}({pos}, {label}, name: <{id}>, shape: {shapes}.{shape})"
+                        )
+                    }
+                    "studio-node" | "studio-card" => {
+                        bail!("Studio presets need an explicit studio import alias")
+                    }
+                    _ => bail!("Unknown node primitive"),
+                };
+                patches.extend(append_graph_argument(source, diagram, &expression)?);
+            }
         }
         Command::DeleteEdge { edge: id } => {
             let edge = diagram

@@ -29,6 +29,12 @@ passed hosted Ubuntu and macOS checks before merging. Manual-curve and showcase
 PRs run the same matrix; use the commit-specific workflow results below for their
 final status. These records describe executed tests, not universal editability.
 
+The 2026-09-20 architecture-wrapper and transparent-page change passed **58
+contract tests**, **10 real Typst tests**, **34 synthetic browser checks**, and
+the unchanged **35 native browser checks** locally. A disposable copy of the
+ARIA Chapter 04 attention/decoder pipeline also accepted an `architecture-node`
+insertion, recompiled to an 11-node preview, and left the original source clean.
+
 ## Acceptance commands
 
 | Check | Scope |
@@ -38,7 +44,7 @@ final status. These records describe executed tests, not universal editability.
 | `cargo test --locked --all-targets` | Parsing, source patches, units, typed controls, capabilities, rollback, save/conflict contracts |
 | `cargo test --locked --all-targets -- --ignored` | Actual Typst renders, instrumented geometry, fallback, and source round trips |
 | `sh tests/package_compile.sh` | Standalone CeTZ/Fletcher package examples and valid/invalid parameter/style declarations |
-| `python3 tests/browser_smoke.py --chromium /path/to/chrome` | 23 production-UI checks against synthetic geometry; not native evidence |
+| `python3 tests/browser_smoke.py --chromium /path/to/chrome` | 34 production-UI checks against synthetic geometry; not native evidence |
 | `python3 tests/native_browser.py --binary target/debug/cetz-studio --chromium /path/to/chrome` | 35 real browser/server/compiler checks |
 | `python3 tests/workspace_browser.py --binary target/debug/cetz-studio` | Project switching, graph/content authoring, deletion, manual routes |
 | `python3 tests/routing_browser.py --binary target/debug/cetz-studio` | Proposed routes, fixed geometry, source fidelity, stale/conflict refusal |
@@ -63,12 +69,14 @@ the local environment above does not independently establish macOS success.
 
 ## ARIA compatibility
 
-At ARIA-NBV commit `738ef529e72da2f45ca442cb99717d4c52cb2d90`, direct native
-compilation passed for the candidate-query overview and oracle-lookahead tree.
-Candidate-generation geometry and target-selection procedure could not render:
-referenced PNGs were Git LFS pointer text rather than hydrated images. The
-52-file syntax scan is described in [architecture](docs/architecture.md).
-These observations do not establish a full-corpus editing success rate.
+At the 2026-09-20 ARIA checkout, all 13 Chapter 04 sources containing a direct
+`graph(...)` or `diagram(...)` call compiled after their tracked LFS assets were
+hydrated. Studio recognized 12 as named graph structures. Ten use literal
+millimetre nodes and expose layout editing; two use Fletcher's elastic unitless
+grid and retain content editing while positions remain read-only. The remaining
+historical rollout/replay figure uses anonymous local wrapper aliases and opens
+as a native preview. These observations do not establish a full-corpus editing
+success rate.
 
 ## Remaining limits
 
