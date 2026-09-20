@@ -68,7 +68,9 @@
     const query=$('project-filter').value.trim().toLowerCase(),tree=projectTree(app.project.files);renderProjectBranch(tree,root,query);
     if(!root.childElementCount)root.append(html('p','project-empty','No matching Typst files.'));
   }
-  function snap(v,event={}) {return $('snap').checked&&!event.altKey?Math.round(v/Number($('grid-step').value))*Number($('grid-step').value):v;}
+  function snapping(event={}) {return $('snap').checked&&!event.altKey;}
+  function gridStep(){const value=Number($('grid-step').value);return Number.isFinite(value)&&value>0?value:1;}
+  function snap(v,event={}) {return snapping(event)?Math.round(v/gridStep())*gridStep():v;}
   function screenToSvg(x,y) {
     const matrix=app.svg?.getScreenCTM();
     if(!matrix)throw new Error('Preview transform is unavailable');
@@ -82,7 +84,22 @@
     return {x:(dx*b.y.y-dy*b.y.x)/det,y:(dy*b.x.x-dx*b.x.y)/det};
   }
   function pointerWorld(e){return svgToWorld(screenToSvg(e.clientX,e.clientY));}
-  function paintTransform(){ $('paper').style.transform=`translate(${app.pan.x}px, ${app.pan.y}px) scale(${app.zoom})`;$('zoom').textContent=`${Math.round(app.zoom*100)}%`; }
+  function updateGrid(){
+    const viewport=$('viewport'),visible=$('show-grid').checked;
+    viewport.classList.toggle('grid-visible',visible);
+    if(!visible||!app.svg||!app.basis)return;
+    const matrix=app.svg.getScreenCTM(),bounds=viewport.getBoundingClientRect();
+    if(!matrix)return;
+    const screen=p=>{const q=worldToSvg(p),r=new DOMPoint(q.x,q.y).matrixTransform(matrix);return{x:r.x-bounds.left,y:r.y-bounds.top};};
+    const origin=screen({x:0,y:0}),xUnit=screen({x:1,y:0}),yUnit=screen({x:0,y:1}),step=gridStep();
+    const spacingX=Math.max(.01,distance(origin,xUnit)*step),spacingY=Math.max(.01,distance(origin,yUnit)*step),smallest=Math.min(spacingX,spacingY);
+    const factor=[1,2,5,10,20,50,100,200].find(value=>smallest*value>=28)||200;
+    viewport.style.setProperty('--grid-origin-x',`${origin.x}px`);viewport.style.setProperty('--grid-origin-y',`${origin.y}px`);
+    viewport.style.setProperty('--grid-minor-x',`${spacingX}px`);viewport.style.setProperty('--grid-minor-y',`${spacingY}px`);
+    viewport.style.setProperty('--grid-major-x',`${spacingX*factor}px`);viewport.style.setProperty('--grid-major-y',`${spacingY*factor}px`);
+    viewport.style.setProperty('--grid-minor-color',smallest>=8?'#303b47':'transparent');
+  }
+  function paintTransform(){ $('paper').style.transform=`translate(${app.pan.x}px, ${app.pan.y}px) scale(${app.zoom})`;$('zoom').textContent=`${Math.round(app.zoom*100)}%`;updateGrid(); }
   function fit(){const v=$('viewport');app.zoom=Math.max(.08,Math.min(2.5,(v.clientWidth-75)/app.size.w,(v.clientHeight-75)/app.size.h));app.pan={x:(v.clientWidth-app.size.w*app.zoom)/2,y:(v.clientHeight-app.size.h*app.zoom)/2-5};paintTransform();drawOverlay();}
   function zoomBy(factor,x,y){const v=$('viewport').getBoundingClientRect();x=x??v.width/2;y=y??v.height/2;const z=Math.max(.08,Math.min(6,app.zoom*factor)),r=z/app.zoom;app.pan={x:x-(x-app.pan.x)*r,y:y-(y-app.pan.y)*r};app.zoom=z;paintTransform();drawOverlay();}
   function markerBox(n,svg){
@@ -154,6 +171,50 @@
   }
   function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
   function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
+  function alignedNodePosition(drag,candidate,event,lock={x:false,y:false}){
+    if(!snapping(event))return {position:candidate,guides:[]};
+    const originalSvg=worldToSvg(drag.node.position),candidateSvg=worldToSvg(candidate);
+    const moved={x:drag.box.x+candidateSvg.x-originalSvg.x,y:drag.box.y+candidateSvg.y-originalSvg.y,w:drag.box.w,h:drag.box.h};
+    const matrix=app.svg?.getScreenCTM();if(!matrix)return {position:candidate,guides:[]};
+    const scale={x:Math.hypot(matrix.a,matrix.b),y:Math.hypot(matrix.c,matrix.d)},threshold=7;
+    const features=(box,axis)=>axis==='x'?[['center',box.x+box.w/2],['left',box.x],['right',box.x+box.w]]:[['center',box.y+box.h/2],['top',box.y],['bottom',box.y+box.h]];
+    const match=axis=>{
+      let best=null;
+      for(const [id,box] of app.nodeRects){
+        if(id===drag.node.id)continue;
+        const moving=features(moved,axis),target=features(box,axis);
+        for(let i=0;i<moving.length;i++){
+          const delta=target[i][1]-moving[i][1],pixels=Math.abs(delta)*(axis==='x'?scale.x:scale.y);
+          if(pixels<=threshold&&(!best||pixels<best.pixels-.01))best={axis,delta,pixels,feature:moving[i][0],value:target[i][1],target:box,node:id};
+        }
+      }
+      return best;
+    };
+    const guides=[];if(!lock.x){const guide=match('x');if(guide){moved.x+=guide.delta;guides.push(guide);}}
+    if(!lock.y){const guide=match('y');if(guide){moved.y+=guide.delta;guides.push(guide);}}
+    const position=svgToWorld({x:moved.x+moved.w/2,y:moved.y+moved.h/2});
+    position.x=Math.round(position.x*10000)/10000;position.y=Math.round(position.y*10000)/10000;
+    return {position,guides,moved};
+  }
+  function drawAlignmentGuides(overlay,guides,moved){
+    const margin=10/app.zoom;
+    for(const guide of guides){
+      const target=guide.target;
+      if(guide.axis==='x'){
+        const y1=Math.min(moved.y,target.y)-margin,y2=Math.max(moved.y+moved.h,target.y+target.h)+margin;
+        overlay.append(el('line',{x1:guide.value,y1,x2:guide.value,y2,class:'alignment-guide','data-align-axis':'x','data-align-node':guide.node}));
+        overlay.append(el('circle',{cx:guide.value,cy:target.y+target.h/2,r:2.4/app.zoom,class:'alignment-guide-point'}));
+      }else{
+        const x1=Math.min(moved.x,target.x)-margin,x2=Math.max(moved.x+moved.w,target.x+target.w)+margin;
+        overlay.append(el('line',{x1,y1:guide.value,x2,y2:guide.value,class:'alignment-guide','data-align-axis':'y','data-align-node':guide.node}));
+        overlay.append(el('circle',{cx:target.x+target.w/2,cy:guide.value,r:2.4/app.zoom,class:'alignment-guide-point'}));
+      }
+    }
+  }
+  function drawNodeDragFeedback(overlay,feedback){
+    drawAlignmentGuides(overlay,feedback.guides,feedback.moved);
+    overlay.append(el('rect',{x:feedback.box.x,y:feedback.box.y,width:feedback.box.w,height:feedback.box.h,rx:3,class:'drag-ghost'}));
+  }
   function select(kind,id){app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();}
   function startDrag(e,kind,payload){
     if(app.busy||e.button!==0||!app.basis)return;
@@ -176,6 +237,7 @@
       const r=el('rect',{x:b.x-2,y:b.y-2,width:b.w+4,height:b.h+4,rx:3,class:`node-hit${selected?' selected':''}${nodeEditable(n)?'':' locked'}`,'data-node':n.id});
       r.addEventListener('pointerdown',ev=>{ev.stopPropagation();select('node',n.id);if(nodeEditable(n))startDrag(ev,'node',{node:n,box:b});});overlay.append(r);
     }
+    if(app.drag?.feedback)drawNodeDragFeedback(overlay,app.drag.feedback);
     routing?.draw(overlay);
     if(app.selection?.kind==='edge'){
       const e=d.edges.find(e=>e.id===app.selection.id),points=e&&app.edgePoints.get(e.id);if(!points)return;
@@ -224,16 +286,23 @@
     const p=pointerWorld(event),delta={x:p.x-drag.start.x,y:p.y-drag.start.y};
     drag.moved ||= Math.hypot(event.clientX-drag.screen.x,event.clientY-drag.screen.y)>3;
     if(!drag.moved)return;
-    $('overlay').querySelector('.drag-ghost')?.remove();
+    $('overlay').querySelectorAll('.drag-ghost,.alignment-guide,.alignment-guide-point').forEach(item=>item.remove());
     if(drag.kind==='node'||drag.kind==='waypoint'){
       const original=drag.kind==='node'?drag.node.position:drag.point;
       let x=snap(original.x+delta.x,event),y=snap(original.y+delta.y,event);
-      if(event.shiftKey){if(Math.abs(delta.x)>Math.abs(delta.y))y=original.y;else x=original.x;}
+      const lock={x:false,y:false};
+      if(event.shiftKey){if(Math.abs(delta.x)>Math.abs(delta.y)){y=original.y;lock.y=true;}else{x=original.x;lock.x=true;}}
+      const alignment=drag.kind==='node'?alignedNodePosition(drag,{x,y},event,lock):{position:{x,y},guides:[]};
+      x=alignment.position.x;y=alignment.position.y;
       drag.command=drag.kind==='node'?{kind:'move_node',id:drag.node.id,x,y}:{kind:'move_waypoint',edge:drag.edge.id,vertex:drag.vertex,x,y};
       const here=worldToSvg({x,y}),old=worldToSvg(original);
       const b=drag.kind==='node'?drag.box:{x:old.x-5/app.zoom,y:old.y-5/app.zoom,w:10/app.zoom,h:10/app.zoom};
-      $('overlay').append(el('rect',{x:b.x+here.x-old.x,y:b.y+here.y-old.y,width:b.w,height:b.h,rx:3,class:'drag-ghost'}));
-      notify(`${drag.kind==='node'?drag.node.id:'Waypoint'} → x ${x.toFixed(2)} mm, y ${y.toFixed(2)} mm · release to compile`);
+      if(drag.kind==='node'){
+        drag.feedback={guides:alignment.guides,moved:alignment.moved,box:{x:b.x+here.x-old.x,y:b.y+here.y-old.y,w:b.w,h:b.h}};
+        drawNodeDragFeedback($('overlay'),drag.feedback);routing?.dragMoved?.(drag.node.id,original,{x,y});
+      }else $('overlay').append(el('rect',{x:b.x+here.x-old.x,y:b.y+here.y-old.y,width:b.w,height:b.h,rx:3,class:'drag-ghost'}));
+      const aligned=alignment.guides.length?` · aligned ${alignment.guides.map(guide=>`${guide.axis} ${guide.feature} with ${guide.node}`).join(', ')}`:'';
+      notify(`${drag.kind==='node'?drag.node.id:'Waypoint'} → x ${x.toFixed(2)} mm, y ${y.toFixed(2)} mm${aligned} · release to compile`);
     }else if(drag.kind==='segment'){
       const d=snap(drag.vertical?delta.x:delta.y,event);
       drag.command={kind:'move_segment',edge:drag.edge.id,segment:drag.segment,delta:d};
@@ -247,7 +316,7 @@
       notify(`Label → segment ${nearest.segment}, fraction ${nearest.fraction.toFixed(2)} · release to compile`);
     }
   }
-  async function endDrag(){const drag=app.drag;if(!drag)return;app.drag=null;$('viewport').classList.remove('panning');drawOverlay();if(drag.moved&&drag.command)await post('/api/edit',{command:drag.command});else if(drag.kind==='pan'&&!drag.moved){app.selection=null;renderList();renderInspector();drawOverlay();}}
+  async function endDrag(){const drag=app.drag;if(!drag)return;app.drag=null;routing?.dragEnded?.();$('viewport').classList.remove('panning');drawOverlay();if(drag.moved&&drag.command)await post('/api/edit',{command:drag.command});else if(drag.kind==='pan'&&!drag.moved){app.selection=null;renderList();renderInspector();drawOverlay();}}
   function renderList(){
     if(!app.snapshot)return;const d=diagram(),root=$('elements'),query=$('search').value.toLowerCase();root.replaceChildren();
     const items=app.list==='parameters'?parameters():app.list==='nodes'?d.nodes:d.edges;
@@ -471,9 +540,10 @@
   }
   $('viewport').addEventListener('pointerdown',e=>{if(!app.busy&&((app.space&&e.button===0)||e.button===1)){e.preventDefault();e.stopPropagation();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}},{capture:true});
   $('viewport').addEventListener('pointerdown',e=>{if(app.busy||e.target.closest?.('.handle,.label-handle,.node-hit,.edge-hit'))return;if(e.button===0||e.button===1){e.preventDefault();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}});
-  $('viewport').addEventListener('pointermove',moveDrag);$('viewport').addEventListener('pointerup',endDrag);$('viewport').addEventListener('pointercancel',()=>{app.drag=null;drawOverlay();});
+  $('viewport').addEventListener('pointermove',moveDrag);$('viewport').addEventListener('pointerup',endDrag);$('viewport').addEventListener('pointercancel',()=>{app.drag=null;routing?.dragEnded?.();drawOverlay();});
   $('viewport').addEventListener('wheel',e=>{e.preventDefault();const b=$('viewport').getBoundingClientRect();zoomBy(Math.exp(-e.deltaY*.001),e.clientX-b.left,e.clientY-b.top);},{passive:false});
   $('fit').onclick=fit;$('zoom-in').onclick=()=>zoomBy(1.2);$('zoom-out').onclick=()=>zoomBy(1/1.2);
+  $('show-grid').onchange=updateGrid;$('grid-step').onchange=updateGrid;
   $('undo').onclick=()=>post('/api/undo');$('redo').onclick=()=>post('/api/redo');$('render').onclick=()=>post('/api/render');$('save').onclick=()=>post('/api/save');
   $('add-node').onclick=openGallery;$('add-edge').onclick=openEdgeCreator;
   const primitives=[
@@ -515,7 +585,7 @@
       const modal=[...$('modal-backdrop').querySelectorAll('.modal')].find(item=>!item.hidden),focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
       if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(!modal.contains(document.activeElement)){e.preventDefault();(e.shiftKey?last:first).focus();}else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
     }
-    if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;app.selection=null;renderInspector();drawOverlay();return;}
+    if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;routing?.dragEnded?.();app.selection=null;renderInspector();drawOverlay();return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const redo=e.shiftKey;if(!$(redo?'redo':'undo').disabled)post(redo?'/api/redo':'/api/undo');return;}
     if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
