@@ -259,3 +259,124 @@ fn batch_adoption_is_one_source_transaction() {
     assert_eq!(model::parse(&next, None).unwrap().edges.len(), 2);
     assert!(next.contains("[second]"));
 }
+
+fn crossing_fixture() -> (String, model::Diagram, Geometry) {
+    let source = "#graph(\
+        n(0,0,<left>,[L]), n(100,0,<right>,[R]),\
+        n(50,50,<top>,[T]), n(50,-50,<bottom>,[B]),\
+        edge(<left.east>,<right.west>),\
+        edge(<top.south>,<bottom.north>)\
+    )"
+    .to_string();
+    let diagram = model::parse(&source, None).unwrap();
+    let geometry = Geometry {
+        nodes: vec![
+            node("left", 0., 0.),
+            node("right", 100., 0.),
+            node("top", 50., -50.),
+            node("bottom", 50., 50.),
+        ],
+        edges: vec![
+            MeasuredEdge {
+                points: vec![point(10., 0.), point(90., 0.)],
+                width_mm: 0.4,
+                corner_mm: 0.,
+                kind: "line".into(),
+            },
+            MeasuredEdge {
+                points: vec![point(50., -40.), point(50., 40.)],
+                width_mm: 0.4,
+                corner_mm: 0.,
+                kind: "line".into(),
+            },
+        ],
+    };
+    (source, diagram, geometry)
+}
+
+#[test]
+fn batch_routing_is_selection_order_independent_and_avoids_a_crossing() {
+    let (source, diagram, geometry) = crossing_fixture();
+    let forward = routing::plan(
+        &source,
+        &diagram,
+        &geometry,
+        &["e0".into(), "e1".into()],
+        &Options::default(),
+        Limits::default(),
+    )
+    .unwrap();
+    let reverse = routing::plan(
+        &source,
+        &diagram,
+        &geometry,
+        &["e1".into(), "e0".into()],
+        &Options::default(),
+        Limits::default(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        serde_json::to_value(&forward.routes).unwrap(),
+        serde_json::to_value(&reverse.routes).unwrap()
+    );
+    assert_eq!(forward.metrics, reverse.metrics);
+    assert_eq!(
+        forward.metrics.crossings,
+        0,
+        "{}",
+        serde_json::to_string_pretty(&forward.routes).unwrap()
+    );
+    assert_eq!(forward.metrics.overlaps, 0);
+    let vertical = forward
+        .routes
+        .iter()
+        .find(|route| route.edge == "e1")
+        .unwrap();
+    assert!(vertical
+        .points
+        .iter()
+        .any(|point| point.x < 10. || point.x > 90.));
+}
+
+#[test]
+fn batch_routing_penalizes_collinear_overlap_and_reports_unavoidable_shared_corridors() {
+    let source = "#graph(n(0,0,<a>,[A]), n(100,0,<b>,[B]), \
+                  edge(<a.east>,<b.west>), edge(<a.east>,<b.west>))"
+        .to_string();
+    let diagram = model::parse(&source, None).unwrap();
+    let geometry = Geometry {
+        nodes: vec![node("a", 0., 0.), node("b", 100., 0.)],
+        edges: vec![
+            MeasuredEdge {
+                points: vec![point(10., 0.), point(90., 0.)],
+                width_mm: 0.4,
+                corner_mm: 0.,
+                kind: "line".into(),
+            },
+            MeasuredEdge {
+                points: vec![point(10., 0.), point(90., 0.)],
+                width_mm: 0.4,
+                corner_mm: 0.,
+                kind: "line".into(),
+            },
+        ],
+    };
+    let plan = routing::plan(
+        &source,
+        &diagram,
+        &geometry,
+        &["e0".into(), "e1".into()],
+        &Options::default(),
+        Limits::default(),
+    )
+    .unwrap();
+
+    let second = plan.routes.iter().find(|route| route.edge == "e1").unwrap();
+    assert!(second.points.iter().any(|point| point.y.abs() > 1.));
+    assert_eq!(plan.metrics.crossings, 0);
+    assert_eq!(plan.metrics.overlaps, 2);
+    assert!(plan.metrics.overlap_mm < 25.);
+    assert!(plan.metrics.total_length_mm > 160.);
+    assert!(plan.metrics.bends >= 2);
+}
