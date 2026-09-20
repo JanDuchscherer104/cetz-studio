@@ -52,11 +52,15 @@ workspace example. This is an editable demonstration, not a scientific result.
 
 Install stable [Rust](https://rustup.rs/) and
 [Typst 0.14.2](https://github.com/typst/typst/releases/tag/v0.14.2).
-Both macOS and Ubuntu use the same commands. No Node/npm build is required.
+For a source build, install Node.js 22 or newer as well. Node/npm is used only
+to bundle local frontend assets; the running editor needs no Node server or CDN.
+Both macOS and Ubuntu use the same commands.
 
 ```sh
 git clone https://github.com/JanDuchscherer104/cetz-studio.git
 cd cetz-studio
+npm ci --ignore-scripts
+npm run build:web
 cargo run --locked --release -- --file examples/studio-workspace.typ --root .
 ```
 
@@ -228,6 +232,8 @@ a loopback application for trusted sources, not an untrusted-document sandbox.
 ## Verify
 
 ```sh
+npm ci --ignore-scripts
+npm run build:web
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
@@ -256,6 +262,9 @@ Ubuntu and macOS.
 See [verification](VERIFICATION.md) for executed evidence and limits, and
 [architecture](docs/architecture.md) for compatibility, properties, performance,
 and reusable editor foundations.
+
+See [frontend dependencies](docs/frontend.md) for the bundle, SVG resource policy,
+license notices, and update checks.
 
 ## License
 

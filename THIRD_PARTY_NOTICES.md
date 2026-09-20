@@ -43,3 +43,14 @@ LICENSE-MIT file. The selected MIT terms and attribution are retained in
 The crate is statically linked into the Rust service. Cargo.lock records its
 transitive dependencies, which retain their own package license terms. No
 libavoid, libavoid-js, or ELK implementation is copied or distributed here.
+
+## Bundled browser libraries
+
+DOMPurify 3.4.15 (Cure53 contributors) is used under Apache-2.0. Its unchanged
+license text is emitted as `web/dist/licenses.txt`, embedded in the binary and
+served at `/vendor-licenses.txt`; upstream license headers are retained in the
+bundle. Source and terms: https://github.com/cure53/DOMPurify/tree/3.4.15.
+
+`esbuild-wasm` 0.25.10 (MIT) is build-time only; no bundler or Node runtime is
+shipped by the application. `package-lock.json` records exact resolved packages
+and integrity hashes. No fonts or upstream source copies are checked in.

@@ -7,3 +7,7 @@ __pycache__/
 .ci/
 *.log
 .DS_Store
+
+/node_modules/
+/web/dist/
+/ui-preview.html
