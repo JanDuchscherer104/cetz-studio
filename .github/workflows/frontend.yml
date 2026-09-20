@@ -37,6 +37,7 @@ jobs:
           cp package-lock.json .ci/frontend/
           cp -R web/dist .ci/frontend/
           tar -czf .ci/frontend/npm-dependencies.tar.gz node_modules
+          npm view tweakpane@4.0.5 dist --json > .ci/frontend/tweakpane-dist.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

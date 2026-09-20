@@ -6,7 +6,8 @@
     "build:web": "node scripts/build_web.mjs"
   },
   "dependencies": {
-    "dompurify": "3.4.15"
+    "dompurify": "3.4.15",
+    "tweakpane": "4.0.5"
   },
   "devDependencies": {
     "esbuild-wasm": "0.25.10"
