@@ -17,8 +17,9 @@ Check every `must` and `must_not` against observed behavior. In particular, an
 accepted composition, compile-only task or Mermaid syntax repair should bypass
 the full design loop. Inspect the artifact and source diff, not just the route
 name in the final response. A missing compiler must leave render acceptance
-unavailable. Add a live-session case only with the shipped interface from [Studio #20](https://github.com/JanDuchscherer104/cetz-studio/issues/20);
-this bundle does not install or simulate that feature.
+unavailable. Canvas and voice collaboration remain in the external agent client
+and outside these routing trials. This bundle does not install or simulate a
+shared session, embedded chat or voice transport.
 
 Use the caller's established agent harness; none is embedded or silently invoked
 by the installer. Record unavailable host execution as an outstanding trial.

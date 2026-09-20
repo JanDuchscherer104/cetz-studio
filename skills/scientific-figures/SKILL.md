@@ -20,7 +20,7 @@ the consumer project's source, data and scientific review own what is true.
 | Mermaid syntax or local renderer failure | Use the existing Mermaid source/tool owner and the selected [renderer recipe](references/renderers.md). |
 | Gallery lookup or supplied preference | Use the project's catalog owner; a preference does not approve or include a figure. |
 | Scientific validity or changed argument | Use the project's independent review or manuscript owner before treating the claim as settled. |
-| Live canvas/voice request | Discover the actual session/tool capabilities first. A skill is not connectivity. Use a shipped live-session skill when available; otherwise hand off explicitly. |
+| Canvas/voice collaboration | Keep conversation and voice in the external agent client. Use the project's actual viewer/editor separately and hand source changes across explicitly; this skill does not create connectivity. |
 
 Use the project's `AGENTS.md` and supplied figure profile. When the project has
 no explicit profile, [project context](references/project.md) describes the few

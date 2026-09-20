@@ -5,10 +5,11 @@ skill. It owns the lesson, claim-to-visual mapping, renderer choice, geometry
 and provenance, and visual comparison. It does not own scientific truth,
 consumer notation/data, a manuscript, or a gallery registry.
 
-The separate `cetz-studio-live` skill will accompany the implemented shared
-session in [#20](https://github.com/JanDuchscherer104/cetz-studio/issues/20).
-It is not included or simulated here. Use the existing editor's capabilities;
-a skill installation does not establish agent/voice connectivity.
+Agent conversation, voice input and orchestration stay in the external coding
+agent client. Use Studio separately for native previews and supported visual
+edits, with explicit source handoffs between them. This bundle does not install
+or simulate a shared session, embedded chat or voice transport; installing a
+skill does not establish agent/editor connectivity.
 
 ## Install an explicit pin
 
