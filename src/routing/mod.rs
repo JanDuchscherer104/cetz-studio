@@ -2,8 +2,9 @@
 //!
 //! Search uses the rectilinear visibility grid induced by inflated obstacle
 //! boundaries, not a pixel raster. Ports and their outward exit corridors are
-//! fixed. Edges are routed independently: crossings/overlaps and label avoidance
-//! are deliberately not optimized. Every batch is all-or-nothing.
+//! fixed. Selected edges are routed as a deterministic batch: constrained edges
+//! go first and later routes pay explicit crossing/overlap costs. Label avoidance
+//! is deliberately not optimized. Every batch is all-or-nothing.
 pub mod jobs;
 mod measure;
 mod patches;
@@ -23,6 +24,10 @@ use std::{
 const EPS: f64 = 1e-7;
 // More than the 0.5e-6 mm rounding error of edit::number.
 const GUARD_MM: f64 = 0.002;
+const BEND_PENALTY_UM: u64 = 5_000;
+const CROSSING_PENALTY_UM: u64 = 250_000;
+const OVERLAP_PENALTY_UM: u64 = 300_000;
+const OVERLAP_LENGTH_MULTIPLIER: f64 = 4_000.0;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Point {
@@ -190,6 +195,151 @@ pub struct Plan {
     pub routes: Vec<Route>,
     pub search_ms: f64,
     pub expansions: usize,
+    pub metrics: PlanMetrics,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct PlanMetrics {
+    pub crossings: usize,
+    pub overlaps: usize,
+    pub overlap_mm: f64,
+    pub total_length_mm: f64,
+    pub bends: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Segment {
+    a: Point,
+    b: Point,
+}
+
+impl Segment {
+    fn vertical(self) -> bool {
+        (self.a.x - self.b.x).abs() <= EPS
+    }
+
+    fn length(self) -> f64 {
+        self.a.distance(self.b)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Interactions {
+    crossings: usize,
+    overlaps: usize,
+    overlap_mm: f64,
+}
+
+fn route_segments(points: &[Point]) -> impl Iterator<Item = Segment> + '_ {
+    points.windows(2).map(|p| Segment { a: p[0], b: p[1] })
+}
+
+fn between(value: f64, a: f64, b: f64) -> bool {
+    value >= a.min(b) - EPS && value <= a.max(b) + EPS
+}
+
+fn strictly_between(value: f64, a: f64, b: f64) -> bool {
+    value > a.min(b) + EPS && value < a.max(b) - EPS
+}
+
+fn segment_interactions(a: Segment, b: Segment) -> Interactions {
+    if a.vertical() != b.vertical() {
+        let (vertical, horizontal) = if a.vertical() { (a, b) } else { (b, a) };
+        let point = Point {
+            x: vertical.a.x,
+            y: horizontal.a.y,
+        };
+        if strictly_between(point.y, vertical.a.y, vertical.b.y)
+            && strictly_between(point.x, horizontal.a.x, horizontal.b.x)
+        {
+            return Interactions {
+                crossings: 1,
+                ..Interactions::default()
+            };
+        }
+        return Interactions::default();
+    }
+
+    let collinear = if a.vertical() {
+        (a.a.x - b.a.x).abs() <= EPS
+    } else {
+        (a.a.y - b.a.y).abs() <= EPS
+    };
+    if !collinear {
+        return Interactions::default();
+    }
+    let (a0, a1, b0, b1) = if a.vertical() {
+        (a.a.y, a.b.y, b.a.y, b.b.y)
+    } else {
+        (a.a.x, a.b.x, b.a.x, b.b.x)
+    };
+    let overlap = a0.max(a1).min(b0.max(b1)) - a0.min(a1).max(b0.min(b1));
+    if overlap > EPS {
+        Interactions {
+            overlaps: 1,
+            overlap_mm: overlap,
+            ..Interactions::default()
+        }
+    } else {
+        Interactions::default()
+    }
+}
+
+fn routing_segment_interactions(candidate: Segment, routed: Segment) -> Interactions {
+    if candidate.vertical() != routed.vertical() {
+        let (vertical, horizontal) = if candidate.vertical() {
+            (candidate, routed)
+        } else {
+            (routed, candidate)
+        };
+        let point = Point {
+            x: vertical.a.x,
+            y: horizontal.a.y,
+        };
+        let on_candidate = if candidate.vertical() {
+            between(point.y, candidate.a.y, candidate.b.y)
+        } else {
+            between(point.x, candidate.a.x, candidate.b.x)
+        };
+        let inside_routed = if routed.vertical() {
+            strictly_between(point.y, routed.a.y, routed.b.y)
+        } else {
+            strictly_between(point.x, routed.a.x, routed.b.x)
+        };
+        // Prior-route coordinates split the visibility grid at every crossing.
+        // Charge the step leaving that grid point, not both the arriving and
+        // leaving steps. A touch that turns away therefore is not a crossing.
+        let arriving_at_intersection =
+            point.distance(candidate.b) <= EPS && point.distance(candidate.a) > EPS;
+        if on_candidate && inside_routed && !arriving_at_intersection {
+            return Interactions {
+                crossings: 1,
+                ..Interactions::default()
+            };
+        }
+        return Interactions::default();
+    }
+    segment_interactions(candidate, routed)
+}
+
+fn routing_interactions_with(segment: Segment, routes: &[Vec<Point>]) -> Interactions {
+    routes
+        .iter()
+        .flat_map(|points| route_segments(points))
+        .map(|other| routing_segment_interactions(segment, other))
+        .fold(Interactions::default(), |mut total, value| {
+            total.crossings += value.crossings;
+            total.overlaps += value.overlaps;
+            total.overlap_mm += value.overlap_mm;
+            total
+        })
+}
+
+fn interaction_cost(interactions: Interactions) -> u64 {
+    (interactions.crossings as u64)
+        .saturating_mul(CROSSING_PENALTY_UM)
+        .saturating_add((interactions.overlaps as u64).saturating_mul(OVERLAP_PENALTY_UM))
+        .saturating_add((interactions.overlap_mm * OVERLAP_LENGTH_MULTIPLIER).ceil() as u64)
 }
 
 fn segment_clear(a: Point, b: Point, obstacles: &[Rect], ignore: Option<usize>) -> bool {
@@ -293,6 +443,7 @@ fn search(
     start_side: Side,
     end_side: Side,
     obstacles: &[Rect],
+    routed: &[Vec<Point>],
     budget: &Budget,
 ) -> Result<Vec<Point>> {
     let mut xs = vec![from.x, to.x];
@@ -300,6 +451,10 @@ fn search(
     for r in obstacles {
         xs.extend([r.min.x, r.max.x]);
         ys.extend([r.min.y, r.max.y]);
+    }
+    for p in routed.iter().flatten() {
+        xs.push(p.x);
+        ys.push(p.y);
     }
     let xs = coordinates(xs);
     let ys = coordinates(ys);
@@ -363,7 +518,12 @@ fn search(
                         return None;
                     }
                     let cost = (a.distance(b) * 1000.0).ceil() as u64
-                        + if direction != s.direction { 5_000 } else { 0 };
+                        + if direction != s.direction {
+                            BEND_PENALTY_UM
+                        } else {
+                            0
+                        }
+                        + interaction_cost(routing_interactions_with(Segment { a, b }, routed));
                     Some((next, cost))
                 })
                 .collect::<Vec<_>>()
@@ -430,6 +590,75 @@ fn remap_label(old: &[Point], new: &[Point], position: [f64; 2]) -> Result<[f64;
     bail!("Cannot place a label on an empty route")
 }
 
+struct PreparedEdge {
+    id: String,
+    source_index: usize,
+    direct_options: usize,
+    blocking_obstacles: usize,
+    start_side: Side,
+    end_side: Side,
+    from: Point,
+    to: Point,
+    first: Point,
+    last: Point,
+    obstacles: Vec<Rect>,
+    old_points: Vec<Point>,
+    old_label_position: Option<[f64; 2]>,
+    remap_label: bool,
+}
+
+fn direct_options(from: Point, to: Point, obstacles: &[Rect]) -> usize {
+    if (from.x - to.x).abs() <= EPS || (from.y - to.y).abs() <= EPS {
+        return usize::from(segment_clear(from, to, obstacles, None));
+    }
+    [Point { x: to.x, y: from.y }, Point { x: from.x, y: to.y }]
+        .into_iter()
+        .filter(|elbow| {
+            segment_clear(from, *elbow, obstacles, None)
+                && segment_clear(*elbow, to, obstacles, None)
+        })
+        .count()
+}
+
+fn blocks_span(rect: Rect, from: Point, to: Point) -> bool {
+    rect.max.x > from.x.min(to.x) + EPS
+        && rect.min.x < from.x.max(to.x) - EPS
+        && rect.max.y > from.y.min(to.y) + EPS
+        && rect.min.y < from.y.max(to.y) - EPS
+}
+
+fn plan_metrics(routes: &[Route]) -> PlanMetrics {
+    let total_length_mm = routes
+        .iter()
+        .flat_map(|route| route_segments(&route.points))
+        .map(Segment::length)
+        .sum();
+    let bends = routes
+        .iter()
+        .map(|route| route.points.len().saturating_sub(2))
+        .sum();
+    let mut interactions = Interactions::default();
+    for (index, route) in routes.iter().enumerate() {
+        for segment in route_segments(&route.points) {
+            for prior in &routes[..index] {
+                for other in route_segments(&prior.points) {
+                    let value = segment_interactions(segment, other);
+                    interactions.crossings += value.crossings;
+                    interactions.overlaps += value.overlaps;
+                    interactions.overlap_mm += value.overlap_mm;
+                }
+            }
+        }
+    }
+    PlanMetrics {
+        crossings: interactions.crossings,
+        overlaps: interactions.overlaps,
+        overlap_mm: interactions.overlap_mm,
+        total_length_mm,
+        bends,
+    }
+}
+
 pub fn plan(
     source: &str,
     diagram: &crate::model::Diagram,
@@ -473,7 +702,7 @@ pub fn plan(
         expansions: Cell::new(0),
         stopped: Cell::new(false),
     };
-    let mut routes = Vec::new();
+    let mut prepared = Vec::with_capacity(edges.len());
     for id in edges {
         ensure!(
             !budget.check(),
@@ -569,12 +798,65 @@ pub fn plan(
                     .any(|r| r.contains(first) || r.contains(last)),
             "A selected port is blocked at this clearance; choose another port or reduce clearance"
         );
-        let middle = search(first, last, start_side, end_side, &obstacles, &budget)
-            .with_context(|| format!("Edge {id}"))?;
+        let direct_options = direct_options(first, last, &obstacles);
+        let blocking_obstacles = obstacles
+            .iter()
+            .enumerate()
+            .filter(|(index, rect)| *index != a && *index != b && blocks_span(**rect, first, last))
+            .count();
+        prepared.push(PreparedEdge {
+            id: id.clone(),
+            source_index: index,
+            direct_options,
+            blocking_obstacles,
+            start_side,
+            end_side,
+            from,
+            to,
+            first,
+            last,
+            obstacles,
+            old_points: measured.points.clone(),
+            old_label_position: edge.label_position,
+            remap_label: edge
+                .call
+                .named("label-pos")
+                .is_some_and(|arg| arg.items.len() == 2),
+        });
+    }
+
+    // Fewer unobstructed elbow choices and more intervening obstacles make an
+    // edge more constrained. Source index is the stable final tie-breaker, so
+    // browser selection order cannot change a batch proposal.
+    prepared.sort_by_key(|edge| {
+        (
+            edge.direct_options,
+            std::cmp::Reverse(edge.blocking_obstacles),
+            edge.source_index,
+        )
+    });
+
+    let mut routed_paths = Vec::with_capacity(prepared.len());
+    let mut indexed_routes = Vec::with_capacity(prepared.len());
+    for edge in prepared {
+        ensure!(
+            !budget.check(),
+            "Routing exhausted its search/time budget; draft unchanged"
+        );
+        let middle = search(
+            edge.first,
+            edge.last,
+            edge.start_side,
+            edge.end_side,
+            &edge.obstacles,
+            &routed_paths,
+            &budget,
+        )
+        .with_context(|| format!("Edge {}", edge.id))?;
         let points = simplify(
-            std::iter::once(from)
+            std::iter::once(edge.from)
                 .chain(middle)
-                .chain(std::iter::once(to))
+                .chain(std::iter::once(edge.to))
                 .collect(),
         );
         ensure!(
@@ -583,35 +865,42 @@ pub fn plan(
         );
         // Scalar label-pos syntax is left byte-identical. Only segment-indexed
         // literal positions need remapping when the number of segments changes.
-        let label_position = if edge
-            .call
-            .named("label-pos")
-            .is_some_and(|arg| arg.items.len() == 2)
-        {
+        let label_position = if edge.remap_label {
             Some(remap_label(
-                &measured.points,
+                &edge.old_points,
                 &points,
-                edge.label_position.context("Computed label position")?,
+                edge.old_label_position.context("Computed label position")?,
             )?)
         } else {
             None
         };
-        routes.push(Route {
-            edge: id.clone(),
-            points,
-            start_side,
-            end_side,
-            label_position,
-        });
+        routed_paths.push(points.clone());
+        indexed_routes.push((
+            edge.source_index,
+            Route {
+                edge: edge.id,
+                points,
+                start_side: edge.start_side,
+                end_side: edge.end_side,
+                label_position,
+            },
+        ));
     }
     ensure!(
         !budget.check(),
         "Routing exhausted its search/time budget; draft unchanged"
     );
+    indexed_routes.sort_by_key(|(index, _)| *index);
+    let routes = indexed_routes
+        .into_iter()
+        .map(|(_, route)| route)
+        .collect::<Vec<_>>();
+    let metrics = plan_metrics(&routes);
     Ok(Plan {
         routes,
         search_ms: budget.start.elapsed().as_secs_f64() * 1000.0,
         expansions: budget.expansions.get(),
+        metrics,
     })
 }
 

@@ -63,6 +63,45 @@ def main() -> None:
         check(page.evaluate("cetzStudioDebug().locked.length") == 0, "Measured/source coordinate checks accept this fixture")
         check(page.locator('#figure [stroke="#a00000"]').count() == 0, "Calibration marker is removed from displayed SVG")
 
+        viewport = page.locator("#viewport")
+        check(viewport.evaluate("node => node.classList.contains('grid-visible')"), "Visual grid is enabled by default")
+        major_before = viewport.evaluate("node => getComputedStyle(node).getPropertyValue('--grid-major-x')")
+        page.locator("#zoom-in").click()
+        major_zoomed = viewport.evaluate("node => getComputedStyle(node).getPropertyValue('--grid-major-x')")
+        check(major_before != major_zoomed, "Visual grid spacing follows canvas zoom")
+        page.locator("#fit").click()
+        page.locator("#show-grid").uncheck()
+        check(not viewport.evaluate("node => node.classList.contains('grid-visible')"), "Grid toggle hides the visual grid without changing snap settings")
+        page.locator("#show-grid").check()
+
+        page.locator("#grid-step").select_option("2")
+        trunk = page.locator('[data-node="trunk"]')
+        box = trunk.bounding_box()
+        assert box
+        ppm = page.evaluate("""() => {
+            const d=cetzStudioDebug(), m=document.querySelector('#figure svg').getScreenCTM();
+            const a=new DOMPoint(d.basis.o.x,d.basis.o.y).matrixTransform(m);
+            const b=new DOMPoint(d.basis.o.x+d.basis.x.x,d.basis.o.y+d.basis.x.y).matrixTransform(m);
+            return Math.hypot(a.x-b.x,a.y-b.y);
+        }""")
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        page.mouse.move(x, y); page.mouse.down(); page.mouse.move(x + 50.6 * ppm, y, steps=8)
+        check(page.locator('.alignment-guide[data-align-axis="x"]').count() == 1, "Node drag previews a measured center or edge alignment guide")
+        page.mouse.up(); idle()
+        check(command() == {"kind": "move_node", "id": "trunk", "x": 71, "y": 40}, "Object alignment takes priority over the nearest grid point")
+        page.locator("#undo").click(); idle()
+
+        box = trunk.bounding_box(); assert box
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        page.keyboard.down("Alt")
+        page.mouse.move(x, y); page.mouse.down(); page.mouse.move(x + 50.6 * ppm, y, steps=8)
+        check(page.locator(".alignment-guide").count() == 0, "Alt temporarily suppresses object alignment guides")
+        page.mouse.up(); page.keyboard.up("Alt"); idle()
+        c = command()
+        check(c["kind"] == "move_node" and c["id"] == "trunk" and abs(c["x"] - 70.6) < .01, "Alt bypasses both grid and object snapping")
+        page.locator("#undo").click(); idle()
+        page.locator("#grid-step").select_option("1")
+
         page.locator('[data-element="trunk"]').click()
         drag('[data-node="trunk"]', 10, 5)
         c = command()
@@ -115,7 +154,7 @@ def main() -> None:
         check(not errors, "No browser JavaScript exceptions")
         (ROOT / "verification").mkdir(exist_ok=True)
         # The screenshot is of this explicitly labelled fixture, not the server.
-        page.locator("#status").evaluate("(node) => node.textContent = 'Browser smoke: 23 checks passed · UI fixture only'")
+        page.locator("#status").evaluate("(node, count) => node.textContent = `Browser smoke: ${count} checks passed · UI fixture only`", len(checks))
         page.screenshot(path=str(ROOT / "verification/ui-fixture.png"), full_page=True)
         browser.close()
     result={"scope":"Production browser code with synthetic API/geometry fixture; Rust and Typst NOT executed", "passed":len(checks),"checks":checks,"browser_errors":errors}

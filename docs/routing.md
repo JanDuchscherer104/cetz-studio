@@ -11,6 +11,13 @@ Changing source revision, opening another file, an external active-file edit,
 or a discarded proposal prevents later adoption. A failed batch has no partial
 success. Ordinary node/waypoint editing never invokes the router automatically.
 
+While a supported node is being dragged, Studio also draws fast amber paths for
+its incident non-Bézier edges. This is an ephemeral SVG-only hint: it uses the
+currently measured preview and the virtual drag position, is bounded to incident
+edges, and disappears on release. It neither edits source nor promises that the
+normal Rust proposal will adopt the same route; press **Preview routes** after
+release to obtain the measured, compile-validated route proposal.
+
 ## Source and geometry contract
 
 `routing/measure.typ` is injected only into a temporary sibling query source.
@@ -72,15 +79,29 @@ latencies alongside screenshots.
 
 ## Algorithm and bounds
 
-The rectilinear visibility grid uses the x/y coordinates of obstacle boundaries
-and the two port exits, not a pixel raster. Obstacles are inflated by requested
-clearance + half edge width + corner radius + 0.002 mm rounding guard. Only each
-endpoint's own outward corridor may cross its inflated rectangle. The remainder
-of the path cannot reenter endpoint boxes. A* minimizes path length in rounded-up
-micrometres plus a 5 mm-equivalent bend penalty, with deterministic neighbour
-order. Simplification removes only zero-length/collinear non-reversing segments.
-Rounded corners keep their existing style; the extra radius margin protects the
-inside of a fillet. Arrowhead footprints are not independently optimized.
+The rectilinear visibility grid uses the x/y coordinates of obstacle boundaries,
+the two port exits, and already-routed selected edges, not a pixel raster.
+Obstacles are inflated by requested clearance + half edge width + corner radius
++ 0.002 mm rounding guard. Only each endpoint's own outward corridor may cross
+its inflated rectangle. The remainder of the path cannot reenter endpoint boxes.
+
+A batch is independent of browser selection order. Edges with fewer clear direct
+elbow paths and more intervening obstacles route first; source order breaks ties.
+Each later A* search minimizes path length in rounded-up micrometres plus a 5 mm
+bend penalty, a 250 mm crossing penalty, and a collinear-overlap penalty of
+300 mm + 4 mm per overlapped millimetre. These costs strongly prefer a clean
+detour while retaining a route when fixed ports or bounded geometry make an
+interaction unavoidable. This is deterministic greedy batch routing, not a
+global optimizer, and it never changes node positions or endpoint ports.
+
+The proposal reports final crossing count, collinear-overlap count and length,
+total route length, and bend count. A crossing means the interiors of two
+perpendicular segments intersect; endpoint touches are not reported as crossings.
+Overlap metrics include shared fixed port corridors because those are visible in
+the accepted result. Simplification removes only zero-length/collinear
+non-reversing segments. Rounded corners keep their existing style; the extra
+radius margin protects the inside of a fillet. Arrowhead footprints are not
+independently optimized.
 
 Limits per proposal: 128 measured nodes, 32 selected edges, 70,000 grid points,
 50,000 expanded states across the batch, 500 ms search budget, and 128 vertices
@@ -93,10 +114,11 @@ running job; it does not kill Typst mid-query, and a new job waits until that
 bounded worker finishes. Apply uses the existing synchronous compile transaction;
 this change does not introduce a general compiler scheduler.
 
-Edges are routed independently. Crossings, collinear edge overlap, label
-avoidance, global bundling, and automatic node layout are deliberately excluded.
-A larger clearance or fixed port can make a route unavailable. Choose a different
-port or lower clearance explicitly; the router does not silently move nodes.
+Selected edges are routed together with crossing and collinear-overlap costs.
+Unselected edges, label avoidance, global bundling, and automatic node layout
+remain deliberately excluded. A larger clearance or fixed port can make a route
+unavailable. Choose a different port or lower clearance explicitly; the router
+does not silently move nodes.
 
 ## Verification
 
@@ -109,9 +131,10 @@ cargo build --locked
 python tests/routing_browser.py --binary /absolute/path/to/cetz-studio
 ```
 
-Rust tests cover intervening obstacles, preserved endpoint direction, byte-scoped
-patches, comments, label remapping, unsupported expressions, invalid requests,
-blocked ports and bounded exhaustion. Native Typst tests cover compile → apply →
+Rust tests cover intervening obstacles, deterministic batch order, crossing and
+overlap penalties/metrics, preserved endpoint direction, byte-scoped patches,
+comments, label remapping, unsupported expressions, invalid requests, blocked
+ports and bounded exhaustion. Native Typst tests cover compile → apply →
 undo → redo → save → reopen, fixed measured geometry, external edits, stale
 revision and failed compiler adoption. Native browser tests exercise the actual
 controls, batch selection, responsive state/zoom during a deliberately delayed

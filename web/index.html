@@ -31,7 +31,7 @@
     <div class="toolbar">
       <div class="toolbar-group"><button id="undo" title="Undo · Ctrl/Cmd+Z" disabled>↶</button><button id="redo" title="Redo · Ctrl/Cmd+Shift+Z" disabled>↷</button></div>
       <div class="toolbar-group create-tools"><button id="add-node" title="Insert a supported primitive">＋ Node</button><button id="add-edge" title="Connect two named nodes">＋ Edge</button></div>
-      <div class="toolbar-group"><label class="snap"><input id="snap" type="checkbox" checked> Snap</label><select id="grid-step" aria-label="Snap step"><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option></select></div>
+      <div class="toolbar-group"><label class="snap"><input id="snap" type="checkbox" checked> Snap</label><select id="grid-step" aria-label="Snap step"><option value="0.5">0.5 mm</option><option value="1" selected>1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option></select><label class="snap" title="Show a zoom-aware grid aligned with the selected snap step"><input id="show-grid" type="checkbox" checked> Grid</label></div>
       <span class="toolbar-spacer"></span>
       <select id="page-select" aria-label="Preview page" hidden></select>
       <span id="preview-status" class="preview-status">Waiting for compiler</span><button id="render">Recompile</button><span class="toolbar-divider"></span><button id="zoom-out" title="Zoom out">−</button><span id="zoom">100%</span><button id="zoom-in" title="Zoom in">+</button><button id="fit">Fit</button>
