@@ -26,9 +26,11 @@ and human/agent trial evidence distinct.
 
 ## Preserve the editing contract
 
-- Browser and future agent clients cross the same session/edit interface.
-  Capabilities come from verified source mappings, not an import name or SVG
-  appearance. Unsupported constructions keep a preview or declared-control lane.
+- Browser commands cross the existing session/edit interface. External coding
+  agents collaborate through reviewable source changes rather than an embedded
+  chat, voice or shared-session transport. Capabilities come from verified
+  source mappings, not an import name or SVG appearance. Unsupported
+  constructions keep a preview or declared-control lane.
 - Keep source patches, units, validation and save/conflict behavior behind their
   existing owners. Add a primitive or adapter for demonstrated reuse, not a
   wrapper for every upstream function.
@@ -48,9 +50,11 @@ together. Reuse upstream packages at their actual pinned versions and prove
 version-sensitive behavior with a small fixture. Package loading alone is not
 reversible-editing support.
 
-For a live/voice feature, verify the actual client and transport before updating
-capability claims. A skill or loopback URL does not establish connectivity. Keep
-credentials, private transcripts and agent runtime state out of commits.
+Keep conversation, voice input and agent orchestration in external coding-agent
+clients. Do not add embedded collaboration UI or session transport without an
+explicitly accepted change to this boundary. A skill or loopback URL does not
+establish connectivity. Keep credentials, private transcripts and agent runtime
+state out of commits.
 
 Before publishing, review the complete diff and current target branch. Report
 exact commits, checks actually run, artifacts and remaining acceptance in the

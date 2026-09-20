@@ -6,18 +6,19 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-6bddb5)](LICENSE)
 ![Platforms: macOS and Ubuntu](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Ubuntu-8ba6bf)
 
-Cetz Studio is being developed as a local workspace for researchers and coding
-agents to co-develop scientific figures. Explain the idea, inspect the actual
-Typst render, refine the figure on canvas or in code, and keep a reviewable source.
+Cetz Studio is a local visual workspace for researchers who co-develop
+scientific figures with coding agents. Discuss the idea in your agent client,
+inspect the actual Typst render in Studio, refine the figure on canvas or in
+code, and keep a reviewable source.
 
 **Available today:** native Typst previews, supported source-preserving edits,
 declared controls, source diffs, undo/redo, and explicit saving with backups.
 
-**Primary development focus:** shared human–agent sessions, selection-aware
-instructions, reviewable proposals, and conversational or voice-driven iteration
-through connected agents. These integrations are under development. Version 0.1
-does not provide a shared agent session, built-in voice assistant, or arbitrary
-3D object editing. See the [live-session specification](https://github.com/JanDuchscherer104/cetz-studio/issues/14).
+**Collaboration boundary:** Studio owns previews, supported visual edits and
+explicit source changes. Conversation, voice input and agent orchestration stay
+in an external coding-agent client such as Codex. Version 0.1 does not provide
+an embedded agent session, built-in voice assistant or arbitrary 3D object
+editing.
 
 ![Cetz Studio showing a native Typst diagram, project browser, and content inspector](docs/media/studio-workspace.png)
 
