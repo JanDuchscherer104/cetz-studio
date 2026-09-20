@@ -1,0 +1,18 @@
+Scientific-figures skill bundle
+
+Adapted from ARIA-NBV scientific-figures and scientific-visualizations guidance
+by Jan Duchscherer, distributed under Apache-2.0:
+https://github.com/JanDuchscherer104/ARIA-NBV/tree/35906a86f2814f29ff3e12655305eac72a730aa2/.agents/skills
+
+This portable edition separates reusable visual-design guidance from the
+consumer project's scientific definitions, evidence, gallery and manuscript.
+New and adapted skill prose is distributed under Apache-2.0; see LICENSE.
+Installer and repository test code remain under the repository MIT license.
+
+Design references (consulted, not vendored):
+https://github.com/mattpocock/skills/blob/c55ee46073ed923f86ce59a5eb3b6d895095d1b7/skills/productivity/writing-for-agents/SKILL.md
+https://github.com/mattpocock/skills/blob/c55ee46073ed923f86ce59a5eb3b6d895095d1b7/skills/engineering/codebase-design/SKILL.md
+https://agentskills.io/specification
+
+Upstream packages, manuals and consumer figures retain their own licenses.
+The bundle neither includes their code nor certifies their current behavior.
