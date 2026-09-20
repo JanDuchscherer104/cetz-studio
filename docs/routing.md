@@ -11,6 +11,13 @@ Changing source revision, opening another file, an external active-file edit,
 or a discarded proposal prevents later adoption. A failed batch has no partial
 success. Ordinary node/waypoint editing never invokes the router automatically.
 
+While a supported node is being dragged, Studio also draws fast amber paths for
+its incident non-Bézier edges. This is an ephemeral SVG-only hint: it uses the
+currently measured preview and the virtual drag position, is bounded to incident
+edges, and disappears on release. It neither edits source nor promises that the
+normal Rust proposal will adopt the same route; press **Preview routes** after
+release to obtain the measured, compile-validated route proposal.
+
 ## Source and geometry contract
 
 `routing/measure.typ` is injected only into a temporary sibling query source.
