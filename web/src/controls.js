@@ -8,6 +8,19 @@ export function createParameterEditor(root, item, {disabled, apply}) {
   const values = {value: item.value};
   const pane = new Pane({container: root});
   pane.element.id = 'parameter-pane';
+  // Use upstream theme properties; do not let the host's dark button-hover
+  // style combine with Tweakpane's default dark-on-light foreground.
+  for (const [property, value] of Object.entries({
+    'base-background-color':'var(--panel, #151c26)',
+    'button-background-color':'var(--line, #293443)',
+    'button-background-color-hover':'var(--line, #293443)',
+    'button-background-color-focus':'var(--line, #293443)',
+    'button-background-color-active':'var(--line, #293443)',
+    'button-foreground-color':'var(--text, #e1e7ef)',
+    'input-background-color':'var(--bg, #10151d)',
+    'input-foreground-color':'var(--text, #e1e7ef)',
+    'label-foreground-color':'var(--muted, #8e9caf)',
+  })) pane.element.style.setProperty(`--tp-${property}`, value);
   const options = {label: item.unit ? `Value · ${item.unit}` : 'Value'};
   if (item.kind === 'number' || item.kind === 'length') {
     options.format = value => String(value);

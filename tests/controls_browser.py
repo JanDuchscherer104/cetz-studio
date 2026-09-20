@@ -17,6 +17,7 @@ def main() -> None:
         try:
             page = browser.new_page()
             page.set_content('<div id="controls"></div><button id="outside">Outside</button>')
+            page.add_style_tag(path=str(ROOT / 'web/style.css'))
             page.add_script_tag(path=str(ROOT / 'web/dist/ui.js'))
             errors: list[str] = []
             page.on('pageerror', lambda error: errors.append(str(error)))
@@ -69,6 +70,18 @@ def main() -> None:
             check(str(value()).lower() == '#123456', 'Color picker emits six-digit hex')
             enter('#ABCDEF')
             check(value() == '#AbCdEf', 'Returning to the same color preserves original spelling')
+            page.locator('#apply-parameter').hover()
+            contrast = page.locator('#apply-parameter').evaluate('''button => {
+              const luminance = color => {
+                const rgb = color.match(/[0-9.]+/g).slice(0,3).map(v => {
+                  const c=Number(v)/255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;
+                });
+                return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
+              };
+              const style=getComputedStyle(button),a=luminance(style.color),b=luminance(style.backgroundColor);
+              return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+            }''')
+            check(contrast >= 4.5, 'Apply text remains legible under the actual host hover styles')
             mount('number', 2, disabled=True)
             check(page.locator('#apply-parameter').is_disabled(), 'Busy/stale Apply is disabled')
             check(page.locator('#parameter-value').is_disabled(), 'Busy/stale control is disabled')
