@@ -24,6 +24,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Install frontend build runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build local frontend dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -131,6 +139,17 @@ jobs:
 
       - name: Verify native obstacle-routing browser workflow
         run: python tests/routing_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output-dir .ci/routing
+
+      - name: Verify native upstream drag previews
+        run: python tests/drag_preview_native.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
+
+      - name: Retain native upstream drag evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drag-preview-${{ matrix.os }}
+          path: .ci/drag-preview
+          if-no-files-found: ignore
 
       - name: Record release deployment size
         env:

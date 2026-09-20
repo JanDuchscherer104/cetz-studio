@@ -161,8 +161,26 @@ def main() -> None:
                         screenshot(page, evidence, "after")
                         before_invalid = state
                         error_start = len(errors)
-                        state = reject_parameter(page, "view-azimuth-deg", "181")
-                        check(state["source"] == before_invalid["source"] and state["revision"] == before_invalid["revision"], "Out-of-range control preserves draft/revision")
+                        # Tweakpane clamps the staged value. Verify that no edit occurs
+                        # without Apply, and bypass the widget to retain server rejection proof.
+                        page.locator("#parameters-tab").click()
+                        page.locator('[data-element="view-azimuth-deg"]').click()
+                        page.locator("#parameter-value").fill("181")
+                        page.locator("#parameters-tab").click()
+                        check(page.locator("#parameter-value").input_value() == "180", "Range widget displays constrained value before Apply")
+                        check(browser_snapshot(page)["revision"] == before_invalid["revision"], "Widget staging does not edit the accepted draft")
+                        rejected_status = page.evaluate("""async () => {
+                          const state = await (await fetch('/api/state')).json();
+                          const response = await fetch('/api/edit', {
+                            method:'POST', headers:{'Content-Type':'application/json', 'X-Cetz-Studio-Token':state.token},
+                            body:JSON.stringify({session_id:state.session_id,revision:state.snapshot.revision,
+                              command:{kind:'set_parameter',id:'view-azimuth-deg',value:181}})
+                          });
+                          return response.status;
+                        }""")
+                        check(rejected_status == 409, "Rust rejects an out-of-range value without relying on widgets")
+                        state = browser_snapshot(page)
+                        check(state["source"] == before_invalid["source"] and state["revision"] == before_invalid["revision"], "Out-of-range request preserves draft/revision")
                         check(source.read_text(encoding="utf-8") == original, "Rejected value never writes disk")
                         # Filter only the expected rejected-request console message
                         # from this operation; retain all JavaScript exceptions.

@@ -1,5 +1,5 @@
-/* Small DOM/SVG interaction shell. Rust is authoritative for every source edit.
- * No framework, CDN, Node build, or diagram model duplicated on disk. */
+/* DOM/SVG application shell. Library-backed presentation adapters are bundled
+ * locally; Rust remains authoritative for every source edit. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -125,20 +125,10 @@
     const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
     return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
   }
-  function sanitizeSvg(root){
-    for(const n of [...root.querySelectorAll('*')]){
-      if(['script','foreignObject','iframe','style','animate','set','animateTransform','animateMotion'].includes(n.localName)){n.remove();continue;}
-      for(const a of [...n.attributes]){
-        const key=a.localName.toLowerCase();
-        if(key.startsWith('on'))n.removeAttributeNode(a);
-        if((key==='href'||key==='src')&&!a.value.startsWith('#')&&!a.value.startsWith('data:image/'))n.removeAttributeNode(a);
-      }
-    }
-  }
   function mountSvg(text){
     const doc=new DOMParser().parseFromString(text,'image/svg+xml');
     if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw new Error('Malformed SVG preview');
-    sanitizeSvg(doc.documentElement);
+    CetzUi.sanitizeSvg(doc.documentElement);
     const svg=document.importNode(doc.documentElement,true);
     $('figure').replaceChildren(svg);app.svg=svg;
     const vb=svg.viewBox.baseVal;
@@ -349,22 +339,14 @@
   }
   function edgeName(e){const name=v=>v?.kind==='anchor'?v.name:'point';return `${name(e.vertices[0])} → ${name(e.vertices.at(-1))}`;}
   function inputNumber(id,value,label){const wrapper=html('label',null,label),input=html('input');input.id=id;input.type='number';input.step='0.5';input.value=Number(value.toFixed(4));wrapper.append(input);return wrapper;}
+  let parameterEditor=null;
   function renderParameter(root, item){
     root.append(html('div','selection-type','DECLARED CONTROL'),html('h2','selection-name',item.label||item.id),html('div','source-line',`Source line ${item.line} · ${item.id}`));
-    const label=html('label','field-label',item.unit?`Value · ${item.unit}`:'Value'),input=html('input');
-    input.id='parameter-value';label.htmlFor=input.id;
-    if(item.kind==='bool'){input.type='checkbox';input.checked=item.value;}
-    else if(item.kind==='color'){input.type='text';input.value=item.value;input.pattern='#[0-9a-fA-F]{6}';input.placeholder='#d8eadd';}
-    else{input.type='number';input.value=item.value;input.step=item.step??'any';if(item.min!=null)input.min=item.min;if(item.max!=null)input.max=item.max;}
-    input.disabled=app.busy||!app.snapshot.preview_current;
-    const apply=html('button','fullwidth','Apply control');apply.id='apply-parameter';apply.disabled=input.disabled;
-    apply.onclick=()=>{
-      if(!input.reportValidity())return;
-      const value=item.kind==='bool'?input.checked:item.kind==='color'?input.value:Number(input.value);
-      if(input.type==='number'&&(!input.value.trim()||!Number.isFinite(value)))return;
-      post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}});
-    };
-    root.append(label,input,apply,html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
+    parameterEditor=CetzUi.createParameterEditor(root,item,{
+      disabled:app.busy||!app.snapshot.preview_current,
+      apply:value=>post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}}),
+    });
+    root.append(html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
   function renderTextFields(root,item,kind){
     const fields=item.text_fields||[];if(!fields.length)return;
@@ -397,6 +379,7 @@
     }
   }
   function renderInspector(){
+    parameterEditor?.dispose();parameterEditor=null;
     const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
     if(sel?.kind==='parameter'){
       const item=parameters().find(p=>p.id===sel.id);

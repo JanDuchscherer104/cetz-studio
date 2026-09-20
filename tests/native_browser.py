@@ -228,7 +228,8 @@ def apply_parameter(page: Page, parameter_id: str, value: str | bool) -> dict[st
     page.locator(f'[data-element="{parameter_id}"]').click()
     field = page.locator("#parameter-value")
     if isinstance(value, bool):
-        field.set_checked(value)
+        if field.is_checked() != value:
+            page.locator("label").filter(has=field).click()
     else:
         field.fill(value)
     revision = int(page.evaluate("window.cetzStudioDebug().revision"))
@@ -391,14 +392,14 @@ def main() -> None:
 
                     state = apply_parameter(page, "radius", "24")
                     check(state["preview_current"], "Numeric control recompiles successfully")
-                    state = apply_parameter(page, "accent-hex", "#C16B42")
+                    state = apply_parameter(page, "accent-hex", "#c16b42")
                     check(state["preview_current"], "Color control recompiles successfully")
                     state = apply_parameter(page, "show-guides", False)
                     check(state["preview_current"], "Boolean control recompiles successfully")
 
                     expected_studio = studio_original
                     expected_studio = expected_studio.replace("studio.param(20mm,", "studio.param(24mm,", 1)
-                    expected_studio = expected_studio.replace('studio.param("#258975",', 'studio.param("#C16B42",', 1)
+                    expected_studio = expected_studio.replace('studio.param("#258975",', 'studio.param("#c16b42",', 1)
                     expected_studio = expected_studio.replace("studio.param(true, label: \"Show guides\"", "studio.param(false, label: \"Show guides\"", 1)
                     check(state["source"] == expected_studio, "Control edits replace only their three declared literals")
                     check(sources["studio"].read_text(encoding="utf-8") == studio_original, "Control drafts leave the source untouched before Save")
@@ -412,7 +413,7 @@ def main() -> None:
                 ) as app:
                     page = open_page(browser, app.origin, "studio-reopen", browser_errors)
                     values = {item["id"]: item["value"] for item in browser_snapshot(page)["parameters"]}
-                    check(values["radius"] == 24 and values["accent-hex"] == "#C16B42" and values["show-guides"] is False, "Reopening preserves numeric, color, and boolean values")
+                    check(values["radius"] == 24 and values["accent-hex"] == "#c16b42" and values["show-guides"] is False, "Reopening preserves numeric, color, and boolean values")
                     page.close(run_before_unload=False)
 
                 rollback_original = sources["rollback"].read_text(encoding="utf-8")
