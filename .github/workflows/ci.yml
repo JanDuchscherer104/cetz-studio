@@ -118,6 +118,17 @@ jobs:
       - name: Verify native browser round trips
         run: python tests/native_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
 
+      - name: Verify native Scenery display controls
+        run: python tests/scenery_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output-dir .ci/scenery
+
+      - name: Retain Scenery native previews and observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenery-${{ matrix.os }}
+          path: .ci/scenery
+          if-no-files-found: ignore
+
       - name: Verify native obstacle-routing browser workflow
         run: python tests/routing_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output-dir .ci/routing
 

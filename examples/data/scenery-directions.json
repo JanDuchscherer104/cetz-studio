@@ -1,0 +1,7 @@
+{
+  "provenance": "schematic fixture; not observations or measured results",
+  "basis": "right-handed XYZ, +Z up",
+  "units": "dimensionless unit directions",
+  "directions": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [-0.6, 0, 0.8], [0, -0.8, 0.6]],
+  "highlight_index": 4
+}
