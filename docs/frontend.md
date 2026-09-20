@@ -45,9 +45,11 @@ then compiles before adoption. There is no new parameter type or source model.
 Typing or dragging a widget stages a value without a request. Apply submits the
 existing typed command; Save remains separate. Ranges clamp values visibly
 before Apply. Tweakpane's step rounding uses the initial value as its origin,
-whereas Studio validates against min or zero, so the adapter maps declared step
-to keyboard/pointer increments and leaves step admission to Rust. It does not
-install a second rounding/validation algorithm.
+whereas Studio validates against min or zero. The adapter maps interaction
+increments to the upstream controls, then aligns staged values to that source
+grid and refreshes the displayed value before Apply. This small policy conversion
+is necessary because Tweakpane has no public step-origin option; Rust still
+revalidates every command. A non-grid maximum is not emitted by the slider.
 
 Opening/applying an unchanged value preserves its original spelling and hex
 case. A different colour uses Tweakpane's canonical six-digit hex string.
@@ -59,3 +61,5 @@ the same lifecycle interface (set CHROMIUM for a local executable). The existing
 native/Scenery suites test source/preview invariants, actual compilation failures,
 undo and save/reopen. Since widgets constrain range inputs, the Scenery suite
 also sends an invalid command directly to prove server-side rejection remains.
+Pointer tests, not only typed-input tests, cover integer and fractional grids,
+non-grid initial values, non-grid maxima, and floating-point range endpoints.

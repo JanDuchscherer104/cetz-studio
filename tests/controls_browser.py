@@ -61,6 +61,21 @@ def main() -> None:
             enter('99')
             check(value() == 50, 'Upstream range widget visibly constrains an out-of-range value')
             check(page.locator('#parameter-value').input_value() == '50', 'The constrained value is displayed before Apply')
+            # Actual pointer interaction, not only text entry: sliders must stage
+            # values admitted by the server's min-or-zero step origin.
+            for minimum, maximum, step, initial in [(-180, 180, 1, -38),
+                    (0.25, 2.25, 0.5, 0.75), (0, 2.2, 0.5, 0.3), (0, 0.3, 0.1, 0.1)]:
+                mount('number', initial, min=minimum, max=maximum, step=step)
+                for fraction in [0.137, 0.433, 0.819, 1.0]:
+                    track = page.locator('#parameter-pane .tp-sldv_t').bounding_box()
+                    assert track is not None
+                    page.mouse.click(track['x'] + fraction * track['width'], track['y'] + track['height']/2)
+                    check(page.evaluate('window.applied.length') == 0, 'Slider staging emits no source command')
+                    staged = float(page.locator('#parameter-value').input_value())
+                    check(minimum <= staged <= maximum and abs((staged-minimum)/step-round((staged-minimum)/step)) <= 1e-7,
+                          f'Pointer-staged value follows bounds/step {minimum}/{maximum}/{step}')
+                    check(value() == staged, 'Apply emits exactly the displayed step-aligned value')
+                    page.evaluate('window.applied = []')
             mount('bool', True)
             page.locator('label').filter(has=page.locator('#parameter-value')).click()
             check(value() is False, 'Boolean widget emits JSON boolean')
