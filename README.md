@@ -1,13 +1,24 @@
 # Cetz Studio
 
-**Draw with code. Refine on canvas. Keep your Typst.**
+**Develop scientific figures together. Keep the Typst source.**
 
 [![CI](https://github.com/JanDuchscherer104/cetz-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/JanDuchscherer104/cetz-studio/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6bddb5)](LICENSE)
 ![Platforms: macOS and Ubuntu](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Ubuntu-8ba6bf)
 
-Move a node. Rewrite a label. Add a connection. See a real Typst render and
-inspect the source diff before saving.
+Cetz Studio is a local visual workspace for researchers who co-develop
+scientific figures with coding agents. Discuss the idea in your agent client,
+inspect the actual Typst render in Studio, refine the figure on canvas or in
+code, and keep a reviewable source.
+
+**Available today:** native Typst previews, supported source-preserving edits,
+declared controls, source diffs, undo/redo, and explicit saving with backups.
+
+**Collaboration boundary:** Studio owns previews, supported visual edits and
+explicit source changes. Conversation, voice input and agent orchestration stay
+in an external coding-agent client such as Codex. Version 0.1 does not provide
+an embedded agent session, built-in voice assistant or arbitrary 3D object
+editing.
 
 ![Cetz Studio showing a native Typst diagram, project browser, and content inspector](docs/media/studio-workspace.png)
 
@@ -53,8 +64,31 @@ Open **http://127.0.0.1:3847**. Use that exact address rather than `localhost`.
 The first compilation can download pinned Typst packages; if needed, add
 `--compile-timeout 120`. `Ctrl+C` stops the process.
 
-For a diagram with editable text, node duplication, edge creation, and the
-primitive gallery, open `examples/studio-workspace.typ` instead.
+## Work with a coding agent today
+
+Use a sequential handoff, not concurrent disk and canvas editing. Agree on the
+figure's lesson and which scientific inputs must remain fixed. Save or export
+any browser draft and retain a pre-edit source baseline, then stop the editor
+before the agent changes source. Review the agent's edits with a version-control
+or text diff against that baseline before restarting Studio. Reopen the updated
+file to inspect the actual render and refine supported layout or controls.
+Studio starts with a clean draft after reopening; its Diff pane does not retain
+the agent's earlier changes. An agent changing a file on disk does not update an
+already-open in-memory draft; **Render** is not a disk reload.
+
+Keep display-camera changes separate from recorded acquisition poses, data and
+metric definitions. Compilation proves that the source renders, not that a
+scientific claim is valid. A visual preference is not scientific approval, and
+saving a source file is not publication or manuscript inclusion.
+
+The examples above are native demonstrations. The generated `ui-preview.html`
+is a synthetic UI fixture, not evidence that a figure compiled or round-tripped.
+
+Contributors start with [AGENTS.md](AGENTS.md), then the relevant
+[architecture and compatibility owner](docs/architecture.md). The
+[skills/primitives specification](https://github.com/JanDuchscherer104/cetz-studio/issues/15)
+and [controlled 3D specification](https://github.com/JanDuchscherer104/cetz-studio/issues/16)
+track the related work without changing current capability claims.
 
 ## Browse and author
 
