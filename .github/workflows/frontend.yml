@@ -1,0 +1,44 @@
+name: Frontend libraries
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser-libraries:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned browser libraries
+        run: npm install --ignore-scripts
+      - run: npm run build:frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install playwright==1.63.0
+          python -m playwright install --with-deps chromium
+      - run: python tests/upstream_browser.py
+      - name: Retain reproducible frontend inputs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci/frontend
+          git archive HEAD -o .ci/frontend/source.tar
+          cp package-lock.json .ci/frontend/package-lock.json
+          tar -czf .ci/frontend/frontend-build.tar.gz package.json package-lock.json node_modules web/dist
+          git rev-parse HEAD > .ci/frontend/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-${{ matrix.os }}
+          path: .ci/frontend
+          retention-days: 7

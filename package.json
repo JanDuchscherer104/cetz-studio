@@ -1,0 +1,10 @@
+{
+  "name": "cetz-studio-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:frontend": "esbuild web/upstream.js --bundle --format=iife --global-name=CetzUpstream --outfile=web/dist/upstream.js --target=es2022 --legal-comments=inline"
+  },
+  "dependencies": { "dompurify": "3.4.15" },
+  "devDependencies": { "esbuild": "0.28.2" }
+}
