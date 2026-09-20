@@ -67,10 +67,13 @@ The first compilation can download pinned Typst packages; if needed, add
 
 Use a sequential handoff, not concurrent disk and canvas editing. Agree on the
 figure's lesson and which scientific inputs must remain fixed. Save or export
-any browser draft and stop the editor before the agent changes source. Then
-restart Studio on the updated file, inspect the real render and diff, and refine
-supported layout or declared controls. An agent changing a file on disk does
-not update an already-open in-memory draft; **Render** is not a disk reload.
+any browser draft and retain a pre-edit source baseline, then stop the editor
+before the agent changes source. Review the agent's edits with a version-control
+or text diff against that baseline before restarting Studio. Reopen the updated
+file to inspect the actual render and refine supported layout or controls.
+Studio starts with a clean draft after reopening; its Diff pane does not retain
+the agent's earlier changes. An agent changing a file on disk does not update an
+already-open in-memory draft; **Render** is not a disk reload.
 
 Keep display-camera changes separate from recorded acquisition poses, data and
 metric definitions. Compilation proves that the source renders, not that a
