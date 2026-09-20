@@ -48,12 +48,18 @@ Primary documentation: [CeTZ](https://cetz-package.github.io/docs/),
 
 ## Mermaid
 
-Keep the `.mmd` and existing local CLI/wrapper. Reproduce syntax failures with
-the exact command and inspect the local version before changing grammar.
-Use the project's symbol projection and semantic classes, if present. Render
-through the existing wrapper; missing tools are an explicit gap, not permission
-to upload private diagrams to an online service. Include the resulting asset
-through the manuscript's format owner and inspect its destination page.
+Keep the `.mmd` and existing local CLI/wrapper. Treat the failing render as a
+red gate: before editing any source, run the supplied wrapper unchanged and
+capture the exact command plus its parser error. If the wrapper cannot run,
+stop the repair branch with that explicit tool gap; source inspection alone is
+not a reproduced failure.
+
+After the red gate, make the smallest syntax-only repair that addresses the
+captured parser error. Rerun the same wrapper and capture its successful result,
+then inspect the generated asset. Preserve the project's symbol projection and
+semantic classes, if present. Missing tools are not permission to upload private
+diagrams to an online service. Include the resulting asset through the
+manuscript's format owner and inspect its destination page.
 Primary documentation: [Mermaid](https://mermaid.js.org/intro/).
 
 ## Scenery

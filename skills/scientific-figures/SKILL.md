@@ -17,7 +17,7 @@ the consumer project's source, data and scientific review own what is true.
 | --- | --- |
 | New figure, redesign, unresolved renderer | Follow the design loop below. |
 | Accepted composition or compile-only repair | Go directly to the project's format/build owner; preserve the lesson. |
-| Mermaid syntax or local renderer failure | Use the existing Mermaid source/tool owner and the selected [renderer recipe](references/renderers.md). |
+| Mermaid syntax or local renderer failure | Before editing, run the supplied local wrapper and capture its parser error; then follow the [renderer repair recipe](references/renderers.md). |
 | Gallery lookup or supplied preference | Use the project's catalog owner; a preference does not approve or include a figure. |
 | Scientific validity or changed argument | Use the project's independent review or manuscript owner before treating the claim as settled. |
 | Canvas/voice collaboration | Keep conversation and voice in the external agent client. Use the project's actual viewer/editor separately and hand source changes across explicitly; this skill does not create connectivity. |

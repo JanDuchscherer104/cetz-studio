@@ -21,6 +21,12 @@ unavailable. Canvas and voice collaboration remain in the external agent client
 and outside these routing trials. This bundle does not install or simulate a
 shared session, embedded chat or voice transport.
 
+For `mermaid-repair`, verify the order from the actual receipt: the agent must
+run the supplied wrapper and capture its parser error before the first source
+edit, apply a minimal syntax repair, then rerun that same wrapper successfully.
+A final successful render without the recorded pre-edit failure does not pass
+the scenario.
+
 Use the caller's established agent harness; none is embedded or silently invoked
 by the installer. Record unavailable host execution as an outstanding trial.
 Author walkthroughs and same-context self-evaluations are supplementary evidence,
