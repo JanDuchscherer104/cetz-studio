@@ -37,7 +37,11 @@ unsupported control characters are rejected.
 - `insert_node` accepts only the fixed primitives reported by the parsed
   diagram's `insert_primitives` field: Fletcher rectangle, ellipse, and diamond,
   plus Studio node and card when the source has a proven `studio` import alias.
-  It accepts optional plain `name` and `text` values but no source code.
+  A recognized direct project wrapper can additionally report
+  `architecture-node`; this clones a literal editable node call as a style and
+  signature template, clears its editable body, and changes only the position,
+  fresh name, and literal title. It accepts optional plain `name` and `text`
+  values but no source code.
 - `delete_edge` removes one recognized direct edge argument. `delete_node`
   removes one recognized direct node and requires `cascade: true` when named
   edges are attached; the node and those edges form one compiled edit and one

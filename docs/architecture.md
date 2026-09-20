@@ -60,7 +60,7 @@ and explicit parameters. No bulk migration of those sources is performed.
 | Generated figures | Radius, spacing, scale, visibility | Declared parameters preserve computed relationships |
 | Automatic routing | Preview obstacle-aware routes for selected or all eligible edges | Measured bounds and cardinal ports; fixed-node remeasurement on Apply; see [routing](routing.md) |
 | Content | Node titles, card bodies, edge labels as Typst expressions | One selected argument, syntax checked and compiled; literal-only plain-text shortcut |
-| Structural edits | Duplicate nodes, add edges, insert gallery presets | Recognized single-page Fletcher graph; existing imports |
+| Structural edits | Duplicate nodes, add edges, insert gallery presets | Recognized single-page Fletcher graph; existing imports or a direct editable project-wrapper template |
 | Deletion | Nodes with explicit attached-edge confirmation; individual edges | Proven references, one undo transaction; final node remains protected |
 | Manual routes | Insert/remove corners; quadratic/cubic Bézier controls | Direct literals; Bézier mode requires Studio edge and diagram wrappers |
 | Future structural editing | Groups and arbitrary CeTZ canvas insertion | Not implemented |

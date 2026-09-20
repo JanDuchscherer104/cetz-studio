@@ -73,6 +73,12 @@ def main() -> None:
         page.locator("#show-grid").uncheck()
         check(not viewport.evaluate("node => node.classList.contains('grid-visible')"), "Grid toggle hides the visual grid without changing snap settings")
         page.locator("#show-grid").check()
+        check(page.locator("#figure .studio-page-background").count() == 1, "Rendered page background is identified conservatively")
+        page.locator("#transparent-page").check()
+        check(page.locator("#paper").evaluate("node => node.classList.contains('transparent-page')"), "Transparency toggle exposes the visual grid through the page")
+        check(page.locator("#figure .studio-page-background").evaluate("node => getComputedStyle(node).visibility === 'hidden'"), "Transparency hides only the rendered page backdrop")
+        page.locator("#transparent-page").uncheck()
+        check(page.locator("#figure .studio-page-background").evaluate("node => getComputedStyle(node).visibility !== 'hidden'"), "Opaque mode restores the rendered page backdrop")
 
         page.locator("#grid-step").select_option("2")
         trunk = page.locator('[data-node="trunk"]')

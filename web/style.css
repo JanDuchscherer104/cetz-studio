@@ -28,3 +28,5 @@
 .alignment-guide{stroke:#3acda5;stroke-width:1;stroke-dasharray:2 2;pointer-events:none;vector-effect:non-scaling-stroke}
 .alignment-guide-point{fill:#3acda5;stroke:#132820;stroke-width:.6;pointer-events:none;vector-effect:non-scaling-stroke}
 .routing-live{fill:none;stroke:#d99b3d;stroke-width:2;stroke-dasharray:5 4;stroke-linejoin:round;pointer-events:none;vector-effect:non-scaling-stroke}
+#paper.transparent-page{background:transparent;box-shadow:none}
+#paper.transparent-page .studio-page-background{visibility:hidden}

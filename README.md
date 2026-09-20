@@ -34,7 +34,7 @@ open as previews with explanations of editing limitations.
 | In the canvas | In your source |
 | --- | --- |
 | Drag nodes and edit selected content | Focused changes to coordinates and Typst expressions |
-| Duplicate nodes or insert a primitive | Named Fletcher/Studio calls with existing styles |
+| Duplicate nodes or insert a primitive | Named Fletcher/Studio calls or an existing project wrapper |
 | Browse a folder and check capabilities | Your existing files, imports, fonts, and assets |
 | Preview, undo, and compare | Compilation before adoption; explicit Save with a backup |
 
@@ -114,14 +114,16 @@ For a recognized graph with verified geometry:
   within the current diagram and does not copy attached edges.
 - **+ Edge** connects two named nodes with an optional label and arrow direction.
 - **+ Node** opens a gallery of Fletcher rectangles, ellipses, and diamonds, plus
-  Studio nodes and cards. Available presets depend on the file's existing imports.
+  Studio nodes and cards. For a recognized custom architecture wrapper such as
+  `n(...)` or `card(...)`, **Architecture node** reuses an existing call as a
+  style template, clears its body, and assigns a fresh position, title, and name.
 - **Delete node** removes a node, with confirmation before removing attached
   connections. **Delete connection** removes one edge. Both support undo.
   Nodes with unresolved references and the final node remain protected.
 
 These commands compile before being adopted and participate in undo/redo.
-The gallery inserts into supported Fletcher diagrams; arbitrary CeTZ canvas
-insertion and cross-file node copying are not implemented.
+The gallery inserts into supported Fletcher diagrams and proven direct project
+wrappers; arbitrary CeTZ canvas insertion and cross-file node copying are not implemented.
 
 ## Shape a connection
 
@@ -153,6 +155,19 @@ cargo run --locked --release -- \
   --file /absolute/project/docs/figure.typ --root /absolute/project/docs
 ```
 
+For the ARIA Chapter 04 attention/decoder pipeline from a Cetz Studio checkout:
+
+```sh
+cargo run --locked --release -- \
+  --file /home/jd/.codex/worktrees/e5bf/ARIA-NBV/docs/figures/thesis/vector/04-method/04-05-finite-candidate-value-model/candidate-query/studies/attention-decoder.typ \
+  --root /home/jd/.codex/worktrees/e5bf/ARIA-NBV/docs
+```
+
+Hydrate repository assets with `git lfs pull` before opening figures that embed
+LFS-managed SVG or raster files. A pointer file is not a renderable image.
+Use **Transparent** beside the Grid control to hide only the rendered page
+backdrop in Studio; it does not change the Typst source or exported figure.
+
 `--typst /absolute/path/to/typst` selects the compiler; repeated
 `--font-path /absolute/path/to/fonts` supplies fonts. Viewing requires a source
 compatible with the installed compiler and available fonts/imports/assets.
@@ -180,7 +195,7 @@ A loop can use a declared radius; the editor will not invent per-object override
 | Source | Preview | Editing |
 | --- | --- | --- |
 | Compiling Typst/CeTZ/custom graphics | Native SVG with page selection | Supported declared parameters |
-| One recognized direct Fletcher graph | Native measured geometry | Literal node positions, existing waypoints, eligible orthogonal segments, ports, label placement |
+| One recognized direct Fletcher graph or proven project wrapper | Native measured geometry | Literal node positions, content, insertion from an existing wrapper, waypoints, eligible orthogonal segments, ports, label placement |
 | Computed coordinates, loops, unknown wrappers/callbacks | Normal compilation fallback | Declared controls; unsupported gestures disabled |
 | Multiple pages or diagrams | Page previews | Declared controls; gestures require verified single-page mapping |
 | Missing imports/fonts/assets or invalid source | Compiler diagnostics | Repair source/environment, then reopen or recompile |
