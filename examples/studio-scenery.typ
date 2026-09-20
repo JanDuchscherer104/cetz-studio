@@ -2,7 +2,7 @@
 #import "../typst/cetz-studio/lib.typ" as studio
 #import "@preview/scenery:0.1.0": build-scene, uv-sphere, sphere, edge, arrow, camera, render-scene
 
-#set page(width: 160mm, height: 110mm, margin: 6mm, fill: white)
+#set page(width: 160mm, height: 130mm, margin: 6mm, fill: white)
 #set text(size: 9pt, fill: rgb("243447"))
 
 // Numeric controls are supported today; the camera receives actual angles.

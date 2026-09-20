@@ -49,10 +49,10 @@ def regions(browser: Browser, svg: str) -> tuple[bytes, bytes]:
         box = page.locator("#native").bounding_box()
         if box is None:
             raise AssertionError("Native SVG has no browser bounds")
-        if abs(box["height"] - 660) > 1:
-            raise AssertionError(f"Expected the 160 by 110 mm fixture, got {box}")
+        if abs(box["height"] - 780) > 1:
+            raise AssertionError(f"Expected the 160 by 130 mm fixture, got {box}")
         halves = [
-            page.screenshot(clip={"x": x, "y": 0, "width": 480, "height": 660})
+            page.screenshot(clip={"x": x, "y": 0, "width": 480, "height": 780})
             for x in (0, 480)
         ]
         return halves[0], halves[1]
