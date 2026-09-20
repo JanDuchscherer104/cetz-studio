@@ -1,0 +1,27 @@
+name: Skill bundle
+
+on:
+  push:
+    branches: [main]
+    paths: ['skills/**', 'scripts/install_skill.py', 'tests/test_skill_bundle.py', '.github/workflows/skills.yml']
+  pull_request:
+    paths: ['skills/**', 'scripts/install_skill.py', 'tests/test_skill_bundle.py', '.github/workflows/skills.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: skill-bundle-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exercise pinned installation and reference closure
+        run: python -m unittest discover -s tests -p 'test_skill_bundle.py' -v
