@@ -17,7 +17,7 @@ def main() -> None:
         try:
             page = browser.new_page()
             page.set_content('<div id="controls"></div><button id="outside">Outside</button>')
-            page.add_script_tag(path=str(ROOT / 'web/dist/controls.js'))
+            page.add_script_tag(path=str(ROOT / 'web/dist/ui.js'))
             errors: list[str] = []
             page.on('pageerror', lambda error: errors.append(str(error)))
 
@@ -29,12 +29,14 @@ def main() -> None:
             def mount(kind: str, value: object, **metadata: object) -> None:
                 page.evaluate('''item => {
                   window.control?.dispose();
-                  window.control = CetzControls.mountParameter(
-                    document.getElementById('controls'), item, !!item.disabled);
+                  window.applied = [];
+                  window.control = CetzUi.createParameterEditor(
+                    document.getElementById('controls'), item, {disabled:!!item.disabled,apply:v=>window.applied.push(v)});
                 }''', {'id': 'fixture', 'kind': kind, 'value': value, **metadata})
 
             def value() -> object:
-                return page.evaluate('window.control.value()')
+                page.locator('#apply-parameter').click()
+                return page.evaluate('window.applied.at(-1)')
 
             def enter(text: str) -> None:
                 page.locator('#parameter-value').fill(text)
@@ -43,10 +45,14 @@ def main() -> None:
             mount('number', 0.0000123456789)
             check(value() == 0.0000123456789, 'Mounting preserves unstepped precision')
             enter('0.125')
+            check(page.evaluate('window.applied.length') == 1, 'Typing alone never applies a source command')
             check(value() == 0.125, 'Unstepped numeric input is not rounded to an invented step')
             mount('number', 0.75, min=0.25, max=2.25, step=0.5)
             enter('1.75')
             check(value() == 1.75, 'Step respects an aligned nonzero range origin')
+            mount('number', 0.3, min=0, max=2, step=0.5)
+            enter('0.5')
+            check(value() == 0.5, 'Widget does not shift the source step origin to the initial value')
             mount('length', 20, min=5, max=50, step=1, unit='mm')
             check(page.locator('#parameter-pane').inner_text().find('mm') >= 0, 'Length unit is explicit')
             enter('24')
@@ -55,7 +61,7 @@ def main() -> None:
             check(value() == 50, 'Upstream range widget visibly constrains an out-of-range value')
             check(page.locator('#parameter-value').input_value() == '50', 'The constrained value is displayed before Apply')
             mount('bool', True)
-            page.locator('#parameter-value').uncheck()
+            page.locator('label').filter(has=page.locator('#parameter-value')).click()
             check(value() is False, 'Boolean widget emits JSON boolean')
             mount('color', '#AbCdEf')
             check(value() == '#AbCdEf', 'Opening a color preserves source hex spelling')
@@ -64,12 +70,13 @@ def main() -> None:
             enter('#ABCDEF')
             check(value() == '#AbCdEf', 'Returning to the same color preserves original spelling')
             mount('number', 2, disabled=True)
+            check(page.locator('#apply-parameter').is_disabled(), 'Busy/stale Apply is disabled')
             check(page.locator('#parameter-value').is_disabled(), 'Busy/stale control is disabled')
             page.evaluate('window.control.dispose()')
             check(page.locator('#parameter-pane').count() == 0, 'Disposal removes the pane on selection changes')
             check(page.evaluate('''() => {
-              try { CetzControls.mountParameter(document.getElementById('controls'),
-                {kind:'vector', value:[1,2]}, false); return false; }
+              try { CetzUi.createParameterEditor(document.getElementById('controls'),
+                {kind:'vector', value:[1,2]}, {disabled:false,apply:()=>{}}); return false; }
               catch { return true; }
             }'''), 'Unknown parameter types do not acquire editing capability')
             check(not errors, f'No widget JavaScript errors: {errors}')

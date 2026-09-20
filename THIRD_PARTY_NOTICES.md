@@ -43,3 +43,20 @@ LICENSE-MIT file. The selected MIT terms and attribution are retained in
 The crate is statically linked into the Rust service. Cargo.lock records its
 transitive dependencies, which retain their own package license terms. No
 libavoid, libavoid-js, or ELK implementation is copied or distributed here.
+
+## Bundled browser libraries
+
+DOMPurify 3.4.15 (Cure53 contributors) is used under Apache-2.0. Its unchanged
+license text is emitted as `web/dist/licenses.txt`, embedded in the binary and
+served at `/vendor-licenses.txt`; upstream license headers are retained in the
+bundle. Source and terms: https://github.com/cure53/DOMPurify/tree/3.4.15.
+
+`esbuild-wasm` 0.25.10 (MIT) is build-time only; no bundler or Node runtime is
+shipped by the application. `package-lock.json` records exact resolved packages
+and integrity hashes. No fonts or upstream source copies are checked in.
+
+Tweakpane 4.0.5 (cocopon) supplies the declared-control widgets under MIT.
+The unmodified upstream license from the 4.0.5 tag is retained in
+`docs/licenses/tweakpane-MIT.txt` and appended to the embedded/served
+`/vendor-licenses.txt`. The npm lock pins its distribution integrity.
+Source: https://github.com/cocopon/tweakpane/tree/4.0.5.

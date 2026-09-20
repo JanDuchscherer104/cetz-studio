@@ -24,6 +24,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Install frontend build runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build local frontend dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:

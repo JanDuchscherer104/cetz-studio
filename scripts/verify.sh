@@ -6,6 +6,9 @@ command -v cargo >/dev/null || { echo 'Cargo is required; no native check ran.' 
 TYPST="${TYPST:-typst}"
 export TYPST
 command -v "$TYPST" >/dev/null || { echo 'Typst is required; native render checks cannot be skipped by this script.' >&2; exit 1; }
+command -v npm >/dev/null || { echo 'Node/npm is required to build frontend assets.' >&2; exit 1; }
+npm ci --ignore-scripts --no-audit --no-fund
+npm run build:web
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
