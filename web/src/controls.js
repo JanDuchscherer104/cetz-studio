@@ -26,12 +26,24 @@ export function createParameterEditor(root, item, {disabled, apply}) {
     options.format = value => String(value);
     for (const key of ['min', 'max']) if (item[key] != null) options[key] = item[key];
     // Tweakpane rounds steps from the initial value; Rust validates from min/0.
-    // Reuse keyboard/pointer scaling, not a conflicting second step validator.
+    // Sensitivity is upstream; normalize staged values to the source grid below.
     if (item.step != null) { options.keyScale = item.step; options.pointerScale = item.step; }
   }
   const binding = pane.addBinding(values, 'value', options);
   let changed = false;
-  binding.on('change', () => { changed = true; });
+  binding.on('change', () => {
+    changed = true;
+    if ((item.kind === 'number' || item.kind === 'length') && item.step != null) {
+      // Tweakpane has no public step-origin option. Keep this source-policy
+      // conversion at the adapter; do not alter its widgets or Rust admission.
+      const origin = item.min ?? 0;
+      let tick = Math.round((values.value - origin) / item.step);
+      if (item.min != null) tick = Math.max(0, tick);
+      if (item.max != null) tick = Math.min(tick, Math.floor((item.max - origin) / item.step + 1e-7));
+      const aligned = Math.min(item.max ?? Infinity, Math.max(item.min ?? -Infinity, origin + tick * item.step));
+      if (values.value !== aligned) { values.value = aligned; binding.refresh(); }
+    }
+  });
   const input = binding.element.querySelector('input');
   if (input) { input.id = 'parameter-value'; input.setAttribute('aria-label', options.label); }
   const button = pane.addButton({title: 'Apply control'});
@@ -45,7 +57,7 @@ export function createParameterEditor(root, item, {disabled, apply}) {
   pane.disabled = disabled;
   const note = document.createElement('p');
   note.className = 'field-note';
-  note.textContent = 'Widgets stage values until Apply. Ranges constrain input; Rust validates declared steps. Save writes the source.';
+  note.textContent = 'Widgets stage step-aligned values until Apply. Rust revalidates every command. Save writes the source.';
   root.append(note);
   return {dispose() { pane.dispose(); note.remove(); }};
 }

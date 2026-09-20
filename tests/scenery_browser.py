@@ -136,6 +136,28 @@ def main() -> None:
                         (evidence / "before.svg").write_text(state["svg"], encoding="utf-8")
                         screenshot(page, evidence, "before")
 
+                        # A real pointer slider must emit a source-step value,
+                        # not merely look usable while Rust rejects its output.
+                        page.locator("#parameters-tab").click()
+                        page.locator('[data-element="view-azimuth-deg"]').click()
+                        track = page.locator("#parameter-pane .tp-sldv_t").bounding_box()
+                        if track is None:
+                            raise AssertionError("Declared camera slider is missing")
+                        page.mouse.click(track["x"] + 0.433 * track["width"], track["y"] + track["height"] / 2)
+                        staged = float(page.locator("#parameter-value").input_value())
+                        check(staged.is_integer() and -180 <= staged <= 180, "Pointer slider stages an admitted camera step")
+                        check(browser_snapshot(page)["revision"] == state["revision"], "Pointer slider does not emit an early source command")
+                        page.locator("#apply-parameter").click()
+                        pointer_state = wait_revision(page, state["revision"])
+                        pointer_expected = original.replace("studio.param(-38,", f"studio.param({int(staged)},", 1)
+                        check(pointer_state["source"] == pointer_expected, "Pointer Apply compiles the exact displayed camera value")
+                        check(source.read_text(encoding="utf-8") == original, "Pointer Apply leaves disk untouched")
+                        check(data_file.read_bytes() == data_before, "Pointer Apply leaves scientific data untouched")
+                        check(regions(browser, pointer_state["svg"])[1] == before_right, "Pointer Apply preserves the companion projection")
+                        page.locator("#undo").click()
+                        state = wait_revision(page, pointer_state["revision"])
+                        check(state["source"] == original, "Pointer change undoes to the exact initial source")
+
                         expected = original
                         previous_left = before_left
                         changes = [
