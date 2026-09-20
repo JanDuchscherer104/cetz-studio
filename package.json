@@ -1,0 +1,14 @@
+{
+  "name": "cetz-studio-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build_web.mjs"
+  },
+  "dependencies": {
+    "dompurify": "3.4.15"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "0.25.10"
+  }
+}
