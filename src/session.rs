@@ -57,6 +57,17 @@ pub struct Capabilities {
     pub multi_page: bool,
 }
 
+/// Immutable compiler input for a tentative browser preview.  It is created
+/// from an accepted session but cannot mutate that session or its history.
+#[derive(Clone)]
+pub struct PreviewInput {
+    pub path: PathBuf,
+    pub compiler: Compiler,
+    pub source: String,
+    pub diagram: Option<Diagram>,
+    pub requires_instrumented_graph: bool,
+}
+
 pub struct Session {
     pub path: PathBuf,
     pub compiler: Compiler,
@@ -143,6 +154,63 @@ impl Session {
         let source = fs::read_to_string(&self.path)?;
         ensure!(source == self.disk_source, "External edit detected. Save refused; your draft is retained. Export the draft or resolve the file outside the editor.");
         Ok(())
+    }
+
+    pub fn source_hash(&self) -> String {
+        hash(self.source.as_bytes())
+    }
+
+    /// All compiler settings that can change a preview belong in scheduler
+    /// identity.  This is intentionally not source-only cache identity.
+    pub fn compiler_config_hash(&self) -> String {
+        let mut value = format!(
+            "executable={}\\nroot={}\\ntimeout_ms={}",
+            self.compiler.executable.display(),
+            self.compiler.root.display(),
+            self.compiler.timeout.as_millis(),
+        );
+        for font in &self.compiler.font_paths {
+            value.push_str(&format!("\\nfont={}", font.display()));
+        }
+        hash(value.as_bytes())
+    }
+
+    /// Prepare, but do not compile or adopt, a command against the accepted
+    /// draft.  The background scheduler owns compilation and result identity;
+    /// explicit edit adoption remains the only history mutation.
+    pub fn preview(&self, expected: u64, command: &edit::Command) -> Result<PreviewInput> {
+        self.check_revision(expected)?;
+        ensure!(
+            !matches!(command, edit::Command::ApplyRoutes { .. }),
+            "Route proposals require explicit adoption"
+        );
+        let parameter_command = matches!(command, edit::Command::SetParameter { .. });
+        if !parameter_command {
+            ensure!(
+                self.graph_gestures_enabled(),
+                "Graph gestures require a current, instrumented single-page preview"
+            );
+        }
+        let source = match command {
+            edit::Command::SetParameter { id, value } => {
+                parameters::apply(&self.source, &self.parameters, id, value)?
+            }
+            _ => edit::apply(
+                &self.source,
+                self.diagram
+                    .as_ref()
+                    .context("Graph gestures are unavailable for this source")?,
+                command,
+            )?,
+        };
+        let (diagram, _) = semantic_model(&source, self.scale_override);
+        Ok(PreviewInput {
+            path: self.path.clone(),
+            compiler: self.compiler.clone(),
+            source,
+            diagram,
+            requires_instrumented_graph: !parameter_command,
+        })
     }
 
     pub fn render(&mut self) -> Result<()> {

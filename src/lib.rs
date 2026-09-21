@@ -3,6 +3,7 @@
 pub mod edit;
 pub mod model;
 pub mod parameters;
+pub mod preview;
 pub mod project;
 pub mod render;
 pub mod session;

@@ -11,8 +11,11 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
-    time::Duration,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::{Duration, Instant},
 };
 use tempfile::Builder;
 use wait_timeout::ChildExt;
@@ -183,21 +186,44 @@ impl Compiler {
         source: &str,
         diagram: Option<&Diagram>,
     ) -> Result<Rendered> {
+        self.render_with_cancel(original, source, diagram, None)
+    }
+
+    /// Render a bounded preview while permitting the owner to abandon obsolete
+    /// work.  Cancellation is deliberately an input to the compiler boundary:
+    /// callers still decide whether a completed result may be adopted.
+    pub fn render_cancellable(
+        &self,
+        original: &Path,
+        source: &str,
+        diagram: Option<&Diagram>,
+        cancelled: &AtomicBool,
+    ) -> Result<Rendered> {
+        self.render_with_cancel(original, source, diagram, Some(cancelled))
+    }
+
+    fn render_with_cancel(
+        &self,
+        original: &Path,
+        source: &str,
+        diagram: Option<&Diagram>,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Rendered> {
         if let Some(diagram) = diagram {
             match instrument(source, diagram)
-                .and_then(|marked| self.compile(original, &marked, true))
+                .and_then(|marked| self.compile(original, &marked, true, cancelled))
             {
                 Ok(rendered) if rendered.pages.len() == 1 => return Ok(rendered),
                 Ok(rendered) => {
                     let reason = format!("Graph gestures are disabled because the instrumented figure produced {} pages", rendered.pages.len());
-                    let mut clean = self.compile(original, source, false)?;
+                    let mut clean = self.compile(original, source, false, cancelled)?;
                     clean.diagnostics = join_diagnostics(&reason, &clean.diagnostics);
                     return Ok(clean);
                 }
                 Err(error) => {
                     // Instrumentation is an optional adapter. A valid Typst file
                     // must still render when its graph shape is unsupported.
-                    let mut clean = self.compile(original, source, false)?;
+                    let mut clean = self.compile(original, source, false, cancelled)?;
                     clean.diagnostics = join_diagnostics(
                         &format!("Graph gestures are unavailable: {error:#}"),
                         &clean.diagnostics,
@@ -206,10 +232,16 @@ impl Compiler {
                 }
             }
         }
-        self.compile(original, source, false)
+        self.compile(original, source, false, cancelled)
     }
 
-    fn compile(&self, original: &Path, source: &str, instrumented: bool) -> Result<Rendered> {
+    fn compile(
+        &self,
+        original: &Path,
+        source: &str,
+        instrumented: bool,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Rendered> {
         let parent = original
             .parent()
             .context("Figure has no parent directory")?;
@@ -275,15 +307,25 @@ impl Compiler {
             })();
             let _ = send.send(result);
         });
-        let status = match child.wait_timeout(self.timeout)? {
-            Some(status) => status,
-            None => {
+        let started = Instant::now();
+        let status = loop {
+            if cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+                let _ = child.kill();
+                let _ = child.wait();
+                bail!("Typst compilation cancelled; original source is unchanged");
+            }
+            let elapsed = started.elapsed();
+            if elapsed >= self.timeout {
                 let _ = child.kill();
                 let _ = child.wait();
                 bail!(
                     "Typst compilation exceeded {} seconds; original source is unchanged",
                     self.timeout.as_secs()
                 );
+            }
+            let wait = (self.timeout - elapsed).min(Duration::from_millis(25));
+            if let Some(status) = child.wait_timeout(wait)? {
+                break status;
             }
         };
         // A misconfigured wrapper could leave a descendant holding the pipe.
