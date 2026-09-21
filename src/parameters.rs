@@ -88,13 +88,19 @@ pub fn parse(source: &str) -> ParsedParameters {
     if parsed.warnings.len() > 32 {
         let omitted = parsed.warnings.len() - 32;
         parsed.warnings.truncate(32);
-        parsed.warnings.push(format!("{omitted} further control diagnostics omitted"));
+        parsed
+            .warnings
+            .push(format!("{omitted} further control diagnostics omitted"));
     }
     parsed
 }
 
 fn line(source: &Source, span: &Span) -> usize {
-    source.text()[..span.start].bytes().filter(|&b| b == b'\n').count() + 1
+    source.text()[..span.start]
+        .bytes()
+        .filter(|&b| b == b'\n')
+        .count()
+        + 1
 }
 
 fn is_hex_color(value: &str) -> bool {
@@ -107,7 +113,9 @@ fn literal(source: &Source, expr: ast::Expr<'_>) -> Result<Parameter> {
     if let ast::Expr::Parenthesized(group) = expr {
         return literal(source, group.expr());
     }
-    let span = source.range(expr.span()).context("Literal has no source range")?;
+    let span = source
+        .range(expr.span())
+        .context("Literal has no source range")?;
     let (kind, value, unit) = match expr {
         ast::Expr::Int(_) | ast::Expr::Float(_) | ast::Expr::Numeric(_) | ast::Expr::Unary(_) => {
             let (value, unit) = numeric(expr)?;
@@ -122,10 +130,15 @@ fn literal(source: &Source, expr: ast::Expr<'_>) -> Result<Parameter> {
         ast::Expr::Bool(value) => (ParameterKind::Bool, Value::from(value.get()), None),
         ast::Expr::Str(value) => {
             let value = value.get().to_string();
-            ensure!(is_hex_color(&value), "Only #rrggbb string literals are color controls");
+            ensure!(
+                is_hex_color(&value),
+                "Only #rrggbb string literals are color controls"
+            );
             (ParameterKind::Color, Value::from(value), None)
         }
-        _ => anyhow::bail!("Computed arguments remain source-owned; declare their inputs with studio.param"),
+        _ => anyhow::bail!(
+            "Computed arguments remain source-owned; declare their inputs with studio.param"
+        ),
     };
     Ok(Parameter {
         id: String::new(),
@@ -147,8 +160,17 @@ fn literal(source: &Source, expr: ast::Expr<'_>) -> Result<Parameter> {
 fn numeric(expr: ast::Expr<'_>) -> Result<(f64, Option<&'static str>)> {
     match expr {
         ast::Expr::Int(value) => {
-            let value = value.get();
-            ensure!(value.unsigned_abs() <= (1u64 << 53), "Integer is outside exact JSON numeric control range");
+            // The AST getter falls back to zero on overflow. Do not expose that
+            // fallback as a real authored value.
+            let value: i64 = value
+                .to_untyped()
+                .text()
+                .parse()
+                .context("Integer literal is outside the supported range")?;
+            ensure!(
+                value.unsigned_abs() <= (1u64 << 53),
+                "Integer is outside exact JSON numeric control range"
+            );
             Ok((value as f64, None))
         }
         ast::Expr::Float(value) => Ok((value.get(), None)),
@@ -168,8 +190,20 @@ fn numeric(expr: ast::Expr<'_>) -> Result<(f64, Option<&'static str>)> {
             Ok((value, Some(unit)))
         }
         ast::Expr::Unary(unary) => {
-            ensure!(unary.to_untyped().children().all(|child| !matches!(child.kind(), typst_syntax::SyntaxKind::BlockComment | typst_syntax::SyntaxKind::LineComment)), "Comments inside a signed literal remain source-owned");
-            ensure!(matches!(unary.expr(), ast::Expr::Int(_) | ast::Expr::Float(_) | ast::Expr::Numeric(_)), "Only a sign applied directly to a numeric literal is editable");
+            ensure!(
+                unary.to_untyped().children().all(|child| !matches!(
+                    child.kind(),
+                    typst_syntax::SyntaxKind::BlockComment | typst_syntax::SyntaxKind::LineComment
+                )),
+                "Comments inside a signed literal remain source-owned"
+            );
+            ensure!(
+                matches!(
+                    unary.expr(),
+                    ast::Expr::Int(_) | ast::Expr::Float(_) | ast::Expr::Numeric(_)
+                ),
+                "Only a sign applied directly to a numeric literal is editable"
+            );
             let (value, unit) = numeric(unary.expr())?;
             match unary.op() {
                 ast::UnOp::Pos => Ok((value, unit)),
@@ -207,7 +241,10 @@ pub fn apply(source: &str, parameters: &[Parameter], id: &str, value: &Value) ->
         .find(|parameter| parameter.id == id)
         .context("Unknown or read-only parameter")?;
     let current_hash: [u8; 32] = Sha256::digest(source.as_bytes()).into();
-    ensure!(current_hash == parameter.source_hash, "Stale parameter source; rediscover controls before editing");
+    ensure!(
+        current_hash == parameter.source_hash,
+        "Stale parameter source; rediscover controls before editing"
+    );
     let unchanged = match parameter.kind {
         ParameterKind::Number | ParameterKind::Length => {
             matches!((parameter.value.as_f64(), value.as_f64()), (Some(current), Some(next)) if current == next)
@@ -224,12 +261,16 @@ pub fn apply(source: &str, parameters: &[Parameter], id: &str, value: &Value) ->
     }
     let replacement = match parameter.kind {
         ParameterKind::Number | ParameterKind::Length => {
-            let value = value.as_f64().context("Numeric parameter requires a JSON number")?;
+            let value = value
+                .as_f64()
+                .context("Numeric parameter requires a JSON number")?;
             validate_number(parameter, value)?;
             format!("{}{}", value, parameter.unit.as_deref().unwrap_or(""))
         }
         ParameterKind::Color => {
-            let value = value.as_str().context("Color parameter requires a JSON string")?;
+            let value = value
+                .as_str()
+                .context("Color parameter requires a JSON string")?;
             ensure!(is_hex_color(value), "Color must use #rrggbb syntax");
             serde_json::to_string(value)?
         }
@@ -238,5 +279,11 @@ pub fn apply(source: &str, parameters: &[Parameter], id: &str, value: &Value) ->
             .context("Boolean parameter requires true or false")?
             .to_string(),
     };
-    apply_patches(source, vec![Patch { span: parameter.span.clone(), replacement }])
+    apply_patches(
+        source,
+        vec![Patch {
+            span: parameter.span.clone(),
+            replacement,
+        }],
+    )
 }
