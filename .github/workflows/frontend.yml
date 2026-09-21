@@ -29,6 +29,8 @@ jobs:
           python -m pip install playwright==1.63.0
           python -m playwright install --with-deps chromium
           python tests/svg_browser.py
+          python tests/controls_browser.py
+          python tests/drag_router_browser.py
       - name: Package reproducible review inputs
         if: always()
         run: |

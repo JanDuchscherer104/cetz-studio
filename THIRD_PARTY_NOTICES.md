@@ -54,3 +54,14 @@ bundle. Source and terms: https://github.com/cure53/DOMPurify/tree/3.4.15.
 `esbuild-wasm` 0.25.10 (MIT) is build-time only; no bundler or Node runtime is
 shipped by the application. `package-lock.json` records exact resolved packages
 and integrity hashes. No fonts or upstream source copies are checked in.
+
+Tweakpane 4.0.5 (cocopon) supplies the declared-control widgets under MIT.
+The unmodified upstream license from the 4.0.5 tag is retained in
+`docs/licenses/tweakpane-MIT.txt` and appended to the embedded/served
+`/vendor-licenses.txt`. The npm lock pins its distribution integrity.
+Source: https://github.com/cocopon/tweakpane/tree/4.0.5.
+
+maxGraph 0.24.0 supplies the Manhattan obstacle-routing algorithm for ephemeral
+browser hints under Apache-2.0. Its package LICENSE is appended unmodified to
+`/vendor-licenses.txt`; bundled upstream headers and third-party attributions are
+retained. Source: https://github.com/maxGraph/maxGraph/tree/v0.24.0.

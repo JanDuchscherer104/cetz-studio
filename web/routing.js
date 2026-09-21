@@ -45,59 +45,36 @@ window.CetzRouting = {
       }
     }
     const rect=(box,dx=0,dy=0)=>({minX:box.x+dx,minY:box.y+dy,maxX:box.x+box.w+dx,maxY:box.y+box.h+dy});
-    const inside=(p,r)=>p.x>r.minX&&p.x<r.maxX&&p.y>r.minY&&p.y<r.maxY;
-    function clear(a,b,obstacles){
-      if(Math.abs(a.x-b.x)>1e-5&&Math.abs(a.y-b.y)>1e-5)return false;
-      return !obstacles.some(r=>{
-        if(Math.abs(a.x-b.x)<1e-5)return a.x>r.minX&&a.x<r.maxX&&Math.min(a.y,b.y)<r.maxY&&Math.max(a.y,b.y)>r.minY;
-        return a.y>r.minY&&a.y<r.maxY&&Math.min(a.x,b.x)<r.maxX&&Math.max(a.x,b.x)>r.minX;
-      });
-    }
-    // A small deterministic visibility-grid A* for ephemeral drag feedback.
-    // It is intentionally bounded to incident edges and is not a substitute for
-    // the Rust planner's measured, source-patchable proposal.
-    function livePath(from,to,obstacles){
-      const xs=[from.x,to.x],ys=[from.y,to.y];
-      for(const r of obstacles){xs.push(r.minX,r.maxX);ys.push(r.minY,r.maxY);}
-      const x=[...new Set(xs.map(n=>Math.round(n*100)/100))].sort((a,b)=>a-b),y=[...new Set(ys.map(n=>Math.round(n*100)/100))].sort((a,b)=>a-b);
-      if(x.length*y.length>2400)return null;
-      const key=(i,j,d)=>`${i}:${j}:${d}`, locate=(values,v)=>values.findIndex(n=>Math.abs(n-v)<.02);
-      const sx=locate(x,from.x),sy=locate(y,from.y),tx=locate(x,to.x),ty=locate(y,to.y);
-      if([sx,sy,tx,ty].some(n=>n<0))return null;
-      const open=[{i:sx,j:sy,d:-1,g:0}],best=new Map([[key(sx,sy,-1),0]]),previous=new Map();let goal=null,steps=0;
-      while(open.length&&steps++<3000){
-        open.sort((a,b)=>(a.g+Math.abs(x[a.i]-to.x)+Math.abs(y[a.j]-to.y))-(b.g+Math.abs(x[b.i]-to.x)+Math.abs(y[b.j]-to.y)));
-        const current=open.shift(),id=key(current.i,current.j,current.d);if(best.get(id)!==current.g)continue;
-        if(current.i===tx&&current.j===ty){goal=current;break;}
-        for(const [ni,nj,d] of [[current.i+1,current.j,0],[current.i-1,current.j,1],[current.i,current.j+1,2],[current.i,current.j-1,3]]){
-          if(ni<0||nj<0||ni>=x.length||nj>=y.length||[1,0,3,2][current.d]===d)continue;
-          const a={x:x[current.i],y:y[current.j]},b={x:x[ni],y:y[nj]};if(!clear(a,b,obstacles)||inside(b,obstacles.find(r=>inside(b,r))||{}))continue;
-          const g=current.g+Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+(current.d>=0&&d!==current.d?24:0),next=key(ni,nj,d);
-          if(g<(best.get(next)??Infinity)){best.set(next,g);previous.set(next,id);open.push({i:ni,j:nj,d,g});}
-        }
-      }
-      if(!goal)return null;
-      const points=[];for(let at=key(goal.i,goal.j,goal.d);at;at=previous.get(at)){const [i,j]=at.split(':').map(Number);points.push({x:x[i],y:y[j]});}points.reverse();
-      return points.filter((p,i,a)=>i===0||i===a.length-1||(p.x-a[i-1].x)*(a[i+1].y-p.y)!==(p.y-a[i-1].y)*(a[i+1].x-p.x));
-    }
     function endpointNode(vertex,nodes){
       if(vertex?.kind!=='anchor')return null;
-      return nodes.find(n=>vertex.name===n.id||vertex.name.startsWith(`${n.id}.`))?.id||null;
+      return nodes.filter(n=>vertex.name===n.id||vertex.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0]?.id||null;
     }
     function updateLive(node,dx,dy){
-      if(!app.basis||!app.snapshot?.capabilities?.graph_gestures)return;
-      const diagram=app.snapshot.diagram,nodes=diagram.nodes,clearance=Math.max(5,Math.abs(worldToSvg({x:2,y:0}).x-worldToSvg({x:0,y:0}).x));
-      const obstacles=nodes.map(n=>{
-        const box=app.nodeRects.get(n.id);return box&&rect(box,n.id===node?dx:0,n.id===node?dy:0);
-      }).filter(Boolean).map(r=>({minX:r.minX-clearance,minY:r.minY-clearance,maxX:r.maxX+clearance,maxY:r.maxY+clearance}));
       liveRoutes=[];
+      if(!app.basis||!app.snapshot?.capabilities?.graph_gestures){drawOverlay();return;}
+      const diagram=app.snapshot.diagram,nodes=diagram.nodes,clearance=Math.max(5,Math.abs(worldToSvg({x:2,y:0}).x-worldToSvg({x:0,y:0}).x));
+      // Missing bounds do not remove an unknown obstacle from a supposedly safe hint.
+      if(nodes.some(n=>!app.nodeRects.has(n.id))){drawOverlay();return;}
+      const obstacles=nodes.map(n=>{
+        const r=rect(app.nodeRects.get(n.id),n.id===node?dx:0,n.id===node?dy:0);
+        return {id:n.id,bounds:{minX:r.minX-clearance,minY:r.minY-clearance,maxX:r.maxX+clearance,maxY:r.maxY+clearance}};
+      });
+      const port=(vertex,id)=>{
+        const value=vertex?.name?.slice(id?.length||0).replace(/^\./,'');
+        return value||undefined;
+      };
+      let attempts=0;
+      const began=performance.now();
       for(const edge of diagram.edges){
         const points=app.edgePoints.get(edge.id),start=endpointNode(edge.vertices[0],nodes),end=endpointNode(edge.vertices.at(-1),nodes);
-        if(!points||edge.route==='bezier'||!(start===node||end===node))continue;
+        if(!points||!edge.editable||edge.route==='bezier'||!(start===node||end===node))continue;
+        if(attempts++>=8||performance.now()-began>24)break;
         const from={...points[0]},to={...points.at(-1)};if(start===node){from.x+=dx;from.y+=dy;}if(end===node){to.x+=dx;to.y+=dy;}
-        // Endpoint boxes may be crossed only at their attached port.
-        const scoped=obstacles.filter((_,i)=>nodes[i]?.id!==start&&nodes[i]?.id!==end);
-        const path=livePath(from,to,scoped);if(path)liveRoutes.push({edge:edge.id,points:path});
+        // The upstream graph uses measured endpoint coordinates and excludes only
+        // their own boxes. This is an ephemeral hint, never an adoptable route.
+        const scoped=obstacles.filter(item=>item.id!==start&&item.id!==end).map(item=>item.bounds);
+        const path=CetzUi.routePreview(from,to,scoped,{start:port(edge.vertices[0],start),end:port(edge.vertices.at(-1),end)});
+        if(path)liveRoutes.push({edge:edge.id,points:path});
       }
       drawOverlay();
     }
@@ -143,6 +120,7 @@ window.CetzRouting = {
       refresh(){
         if(!app.snapshot)return;
         if(identity!==signature()){
+          cancelAnimationFrame(liveFrame);liveRoutes=[];
           identity=signature();generation++;clearTimeout(timer);proposal=null;status=null;checked.clear();
           if(!app.fixture)poll();
         }
@@ -167,7 +145,9 @@ window.CetzRouting = {
       },
       dragMoved(node,original,current){
         cancelAnimationFrame(liveFrame);
+        const observed=signature();
         liveFrame=requestAnimationFrame(()=>{
+          if(observed!==signature())return;
           const a=worldToSvg(original),b=worldToSvg(current);updateLive(node,b.x-a.x,b.y-a.y);
         });
       },

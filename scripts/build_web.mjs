@@ -16,4 +16,6 @@ await build({
   legalComments: 'inline',
 });
 await writeFile(`${root}web/dist/licenses.txt`,
-  await readFile(`${root}node_modules/dompurify/LICENSE`));
+  (await readFile(`${root}node_modules/dompurify/LICENSE`, 'utf8')) + '\n\nTweakpane 4.0.5\n' +
+  (await readFile(`${root}docs/licenses/tweakpane-MIT.txt`, 'utf8')) + '\n\nmaxGraph 0.24.0\n' +
+  (await readFile(`${root}node_modules/@maxgraph/core/LICENSE`, 'utf8')));
