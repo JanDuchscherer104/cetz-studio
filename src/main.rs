@@ -223,6 +223,61 @@ fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
         .map(|h| h.value.as_str())
 }
 
+fn direct_loopback_host(host: &str, port: u16) -> bool {
+    [
+        format!("127.0.0.1:{port}"),
+        format!("localhost:{port}"),
+        format!("[::1]:{port}"),
+    ]
+    .iter()
+    .any(|expected| host.eq_ignore_ascii_case(expected))
+}
+
+fn direct_loopback_origin(origin: &str, port: u16) -> bool {
+    [
+        format!("http://127.0.0.1:{port}"),
+        format!("http://localhost:{port}"),
+        format!("http://[::1]:{port}"),
+    ]
+    .iter()
+    .any(|expected| origin.eq_ignore_ascii_case(expected))
+}
+
+fn vscode_proxy_origin(origin: &str) -> bool {
+    if let Some(authority) = origin.strip_prefix("vscode-webview://") {
+        return !authority.is_empty() && !authority.contains('/');
+    }
+    let Some(authority) = origin
+        .strip_prefix("https://")
+        .and_then(|url| url.split('/').next())
+    else {
+        return false;
+    };
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority.split(':').next().unwrap_or_default();
+    host.eq_ignore_ascii_case("vscode.dev")
+        || host.ends_with(".vscode.dev")
+        || host.ends_with(".tunnels.api.visualstudio.com")
+        || host.ends_with(".app.github.dev")
+}
+
+/// Requests normally arrive directly from a loopback browser. VS Code Remote
+/// also supplies an authenticated browser proxy whose page has a distinct
+/// origin. Keep arbitrary DNS-rebound hosts out, but admit that small set of
+/// VS Code-owned origins. State-changing requests still require the unguessable
+/// per-session token below.
+fn trusted_browser_request(host: Option<&str>, origin: Option<&str>, port: u16) -> bool {
+    let host_is_loopback = host.is_some_and(|value| direct_loopback_host(value, port));
+    match origin {
+        None => host_is_loopback,
+        Some(origin) if direct_loopback_origin(origin, port) => host_is_loopback,
+        Some(origin) if vscode_proxy_origin(origin) => true,
+        Some(_) => false,
+    }
+}
+
 fn json_body<T: serde::de::DeserializeOwned>(request: &mut Request) -> Result<T> {
     ensure!(
         header(request, "Content-Type")
@@ -444,16 +499,16 @@ fn main() -> Result<()> {
     let token = Uuid::new_v4().to_string();
     println!("Cetz Studio: {origin}\nOpen figure: {}\nOnly explicit Save writes the figure. Ctrl+C stops the server.", state.session.path.display());
     for mut request in server.incoming_requests() {
-        // Loopback binding alone does not stop DNS rebinding or cross-origin
-        // requests. Reject foreign Host/Origin before even serving the UI.
-        if header(&request, "Host") != Some(host.as_str())
-            || header(&request, "Origin").is_some_and(|o| o != origin)
-        {
+        if !trusted_browser_request(
+            header(&request, "Host"),
+            header(&request, "Origin"),
+            args.port,
+        ) {
             respond(
                 request,
                 403,
                 "text/plain; charset=utf-8",
-                "Foreign host/origin refused".into(),
+                "Untrusted browser origin refused".into(),
             );
             continue;
         }
@@ -495,4 +550,49 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::trusted_browser_request;
+
+    #[test]
+    fn accepts_direct_and_vscode_forwarded_browsers() {
+        assert!(trusted_browser_request(Some("127.0.0.1:3847"), None, 3847));
+        assert!(trusted_browser_request(
+            Some("localhost:3847"),
+            Some("http://localhost:3847"),
+            3847
+        ));
+        assert!(trusted_browser_request(
+            Some("127.0.0.1:3847"),
+            Some("vscode-webview://8f6cb5"),
+            3847
+        ));
+        assert!(trusted_browser_request(
+            Some("remote-proxy:443"),
+            Some("https://vscode.dev"),
+            3847
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_hosts_and_origins() {
+        assert!(!trusted_browser_request(Some("evil.test:3847"), None, 3847));
+        assert!(!trusted_browser_request(
+            Some("evil.test:3847"),
+            Some("https://evil.test"),
+            3847
+        ));
+        assert!(!trusted_browser_request(
+            Some("127.0.0.1:3847"),
+            Some("https://evil.test"),
+            3847
+        ));
+        assert!(!trusted_browser_request(
+            Some("evil.test:3847"),
+            Some("https://evil.test@vscode.dev"),
+            3847
+        ));
+    }
 }
