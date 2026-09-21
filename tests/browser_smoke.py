@@ -63,6 +63,18 @@ def main() -> None:
         check(page.evaluate("cetzStudioDebug().locked.length") == 0, "Measured/source coordinate checks accept this fixture")
         check(page.locator('#figure [stroke="#a00000"]').count() == 0, "Calibration marker is removed from displayed SVG")
 
+        page.locator("#parameters-tab").click()
+        page.locator('[data-element="fixture-radius"]').click()
+        parameter = page.locator("#parameter-value")
+        parameter.fill("24")
+        parameter.focus()
+        page.locator("#render").click(); idle()
+        check(parameter.input_value() == "24", "Staged control value survives an accepted snapshot refresh")
+        check(page.evaluate("document.activeElement && document.activeElement.id") == "parameter-value", "Control focus survives an accepted snapshot refresh")
+        page.locator("#apply-parameter").click(); idle()
+        check(command() == {"kind": "set_parameter", "id": "fixture-radius", "value": 24}, "Explicit Apply sends the staged control as one edit command")
+        check(page.evaluate("window.cetzStudioFixtureRequests.some(request => request.url === '/api/preview')") is False, "The browser fixture does not invent a preview endpoint")
+
         viewport = page.locator("#viewport")
         check(viewport.evaluate("node => node.classList.contains('grid-visible')"), "Visual grid is enabled by default")
         major_before = viewport.evaluate("node => getComputedStyle(node).getPropertyValue('--grid-major-x')")

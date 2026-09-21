@@ -10,7 +10,8 @@
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null,
-    panel:null, panelTrigger:null, fidelityLosses:[]};
+    panel:null, panelTrigger:null, fidelityLosses:[],
+    preview:{generation:0,state:'idle',identity:null,diagnostics:null,pages:null,svg:null,timer:null,poll:null}};
   const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
@@ -26,9 +27,127 @@
     $('status').textContent=message;
     if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
   }
+  function previewStatusText(){
+    const state=app.preview.state;
+    if(app.fixture)return 'UI fixture';
+    if(state==='queued')return 'Preview queued · showing last valid';
+    if(state==='running')return 'Preview running · showing last valid';
+    if(state==='current')return 'Preview ready · Apply to adopt';
+    if(state==='failed')return 'Preview failed · showing last valid';
+    if(state==='cancelled')return 'Preview cancelled · showing last valid';
+    const svg=app.snapshot?.pages?.length?app.snapshot.pages[app.page]:app.snapshot?.svg;
+    return svg?(app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable';
+  }
+  function renderPreviewStatus(){
+    $('preview-status').textContent=previewStatusText();
+    $('preview-status').dataset.state=app.preview.state;
+    $('preview-status').title=app.preview.diagnostics||'';
+  }
+  function previewEnvelope(data, generation){
+    if(generation!==app.preview.generation||!data.preview)return false;
+    const preview=data.preview;
+    const identity=preview.identity||{};
+    if(identity.session_id!=null&&identity.session_id!==app.sessionId)return false;
+    if(identity.base_revision!=null&&identity.base_revision!==app.snapshot?.revision)return false;
+    if(identity.request_generation!=null&&identity.request_generation!==generation)return false;
+    app.preview.state=preview.state||'idle';
+    app.preview.identity=preview.identity||null;
+    app.preview.diagnostics=preview.diagnostics||null;
+    app.preview.pages=preview.pages||null;
+    app.preview.svg=preview.svg||null;
+    renderPreviewStatus();
+    return true;
+  }
+  function previewStatusTextForDiagnostics(){
+    return app.preview.diagnostics&&app.preview.state==='failed'?`Tentative preview failed: ${app.preview.diagnostics}`:null;
+  }
+  function previewDiagnostics(){
+    const warnings=[...(app.snapshot?.warnings||diagram().warnings)];
+    if(app.mappingError)warnings.push(app.mappingError);
+    if(app.fidelityLosses.length)warnings.push(...app.fidelityLosses.map(loss=>`Preview fidelity warning: ${loss.count} ${loss.kind}${loss.count===1?' was':'s were'} ${loss.reason}.`));
+    if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
+    const tentative=previewStatusTextForDiagnostics();if(tentative)warnings.push(tentative);
+    return warnings;
+  }
+  function updatePreviewDiagnostics(){
+    const warnings=previewDiagnostics();
+    $('warning-count').textContent=warnings.length+(app.snapshot?.diagnostics?1:0);
+    $('diagnostics').textContent=[...warnings,app.snapshot?.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
+  }
+  function previewCandidateSvg(){
+    const pages=app.preview.pages?.length?app.preview.pages:app.preview.svg?[app.preview.svg]:[];
+    return pages[app.page];
+  }
+  function showPreviewCandidate(){
+    const svg=previewCandidateSvg();
+    if(app.preview.state!=='current'||!svg)return;
+    // Candidate previews are intentionally display-only. If a graph candidate
+    // cannot retain the current instrumented mapping, keep the accepted image.
+    const before={html:$('figure').innerHTML,svg:app.svg,basis:app.basis,size:{...app.size},mappingError:app.mappingError,markers:app.markers,nodeRects:app.nodeRects,edgePoints:app.edgePoints,labelRects:app.labelRects,locked:app.locked,first:app.first,mountedSvg:app.mountedSvg};
+    try{mountSvg(svg);app.previewVisible=true;}
+    catch(error){$('figure').innerHTML=before.html;app.svg=$('figure svg');app.basis=before.basis;app.size=before.size;app.mappingError=before.mappingError;app.markers=before.markers;app.nodeRects=before.nodeRects;app.edgePoints=before.edgePoints;app.labelRects=before.labelRects;app.locked=before.locked;app.first=before.first;app.mountedSvg=before.mountedSvg;app.previewVisible=false;}
+    updatePreviewDiagnostics();
+  }
+  function restoreAcceptedPreview(){
+    if(!app.previewVisible)return;
+    const pages=app.snapshot?.pages?.length?app.snapshot.pages:app.snapshot?.svg?[app.snapshot.svg]:[];
+    const svg=pages[app.page];
+    if(svg)try{mountSvg(svg);}catch{}
+    app.previewVisible=false;
+  }
+  function stopPreviewPolling(){if(app.preview.poll){clearTimeout(app.preview.poll);app.preview.poll=null;}}
+  async function pollPreview(generation){
+    if(generation!==app.preview.generation||app.fixture)return;
+    try{
+      const response=await fetch('/api/preview/status',{headers:{'X-Cetz-Studio-Token':app.token}});
+      const data=await response.json();
+      if(!response.ok)throw Object.assign(new Error(data.error||'Preview status failed'),{envelope:data});
+      if(!previewEnvelope(data,generation))return;
+      if(app.preview.state==='current')showPreviewCandidate();
+      if(['queued','running'].includes(app.preview.state))app.preview.poll=setTimeout(()=>pollPreview(generation),80);else stopPreviewPolling();
+    }catch(error){
+      if(generation!==app.preview.generation)return;
+      restoreAcceptedPreview();app.preview.state='failed';app.preview.diagnostics=error.message;renderPreviewStatus();updatePreviewDiagnostics();stopPreviewPolling();
+    }
+  }
+  function preview(command, transaction){
+    if(app.fixture||!app.snapshot||app.busy)return;
+    restoreAcceptedPreview();
+    const generation=++app.preview.generation;stopPreviewPolling();
+    app.preview.state='queued';app.preview.identity={session_id:app.sessionId,base_revision:app.snapshot.revision,request_generation:generation,transaction_id:transaction||null};app.preview.diagnostics=null;app.preview.pages=null;app.preview.svg=null;renderPreviewStatus();updatePreviewDiagnostics();
+    fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,generation,command})})
+      .then(async response=>{const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Preview request failed'),{envelope:data});if(!previewEnvelope(data,generation))return;if(app.preview.state==='current')showPreviewCandidate();else if(['queued','running'].includes(app.preview.state))app.preview.poll=setTimeout(()=>pollPreview(generation),80);})
+      .catch(error=>{if(generation!==app.preview.generation)return;restoreAcceptedPreview();app.preview.state='failed';app.preview.diagnostics=error.message;renderPreviewStatus();updatePreviewDiagnostics();});
+  }
+  function tentativeTextIsValid(value){
+    if(!value.trim())return false;
+    const pairs={')':'(',']':'[','}':'{'};let quote=null,escape=false,stack=[];
+    for(const char of value){
+      if(quote){if(escape)escape=false;else if(char==='\\')escape=true;else if(char===quote)quote=null;continue;}
+      if(char==='"'||char==="'"){quote=char;continue;}
+      if(char==='('||char==='['||char==='{')stack.push(char);
+      else if(pairs[char]&&(stack.pop()!==pairs[char]))return false;
+    }
+    return !quote&&!stack.length;
+  }
+  function scheduleTextPreview(command, value, transaction, state){
+    clearTimeout(state.timer);if(!tentativeTextIsValid(value))return;
+    state.timer=setTimeout(()=>preview(command(),transaction),400);
+  }
+  async function cancelPreview(){
+    stopPreviewPolling();
+    if(app.fixture||app.preview.state==='idle'||app.preview.state==='current')return;
+    const generation=++app.preview.generation;restoreAcceptedPreview();app.preview.state='cancelled';renderPreviewStatus();
+    try{await fetch('/api/preview/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot?.revision})});}catch{}
+    if(generation===app.preview.generation)updatePreviewDiagnostics();
+  }
   function applyEnvelope(data){
     if(data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId){app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;app.fidelityLosses=[];}
     if(data.session_id!=null)app.sessionId=data.session_id;
+    if(data.snapshot){
+      stopPreviewPolling();
+      app.preview.generation+=1;app.preview.state='idle';app.preview.identity=null;app.preview.diagnostics=null;app.preview.pages=null;app.preview.svg=null;app.previewVisible=false;
+    }
     if(data.project!==undefined)app.project=data.project;
     if(data.snapshot)refresh(data.snapshot);else renderProject();
   }
@@ -383,7 +502,8 @@
     root.append(html('div','selection-type','DECLARED CONTROL'),html('h2','selection-name',item.label||item.id),html('div','source-line',`Source line ${item.line} · ${item.id}`));
     parameterEditor=CetzUi.createParameterEditor(root,item,{
       disabled:app.busy||!app.snapshot.preview_current,
-      apply:value=>post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}}),
+      preview:(value,transaction)=>preview({kind:'set_parameter',id:item.id,value},transaction),
+      apply:async(value)=>{await cancelPreview();return post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}});},
     });
     root.append(html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
@@ -393,11 +513,17 @@
     for(const field of fields){
       const wrap=html('div','text-field'),label=html('label',null,field.id[0].toUpperCase()+field.id.slice(1)),input=html('textarea');
       const source=html('textarea','typst-editor'),applySource=html('button','fullwidth','Apply Typst');
+      const sourcePreview={timer:null,transaction:`${kind}:${item.id}:${field.id}:${Date.now()}`};
       source.id=`${kind}-${field.id}-source`;source.value=field.source??'';source.spellcheck=false;
       source.setAttribute('aria-label',`${label.textContent} Typst content`);
       source.disabled=app.busy||!field.source_editable||!structuralEdits();
+      source.addEventListener('input',()=>scheduleTextPreview(
+        ()=>kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:source.value}:{kind:'set_edge_source',edge:item.id,field:field.id,source:source.value},
+        source.value,sourcePreview.transaction,sourcePreview));
+      source.addEventListener('change',()=>{if(tentativeTextIsValid(source.value))preview(kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:source.value}:{kind:'set_edge_source',edge:item.id,field:field.id,source:source.value},sourcePreview.transaction);});
       applySource.id=`apply-${kind}-${field.id}-source`;applySource.disabled=source.disabled;
       applySource.onclick=async()=>{
+        clearTimeout(sourcePreview.timer);sourcePreview.timer=null;
         const draft=source.value;
         const command=kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:draft}:{kind:'set_edge_source',edge:item.id,field:field.id,source:draft};
         const result=await post('/api/edit',{command});
@@ -418,13 +544,16 @@
     }
   }
   function renderInspector(){
-    parameterEditor?.dispose();parameterEditor=null;
-    const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
+    const root=$('inspector');const sel=app.selection,d=diagram();
     if(sel?.kind==='parameter'){
       const item=parameters().find(p=>p.id===sel.id);
-      if(item){renderParameter(root,item);return;}
+      if(item){
+        if(parameterEditor?.matches(item.id)){parameterEditor.update(item,app.busy||!app.snapshot.preview_current);return;}
+        parameterEditor?.dispose();parameterEditor=null;root.replaceChildren();renderParameter(root,item);return;
+      }
       app.selection=null;
     }
+    parameterEditor?.dispose();parameterEditor=null;root.replaceChildren();
     if(!app.selection){root.append(html('div','inspector-hint',graphGestures()?'Select a node or connection to edit supported layout properties. Controls exposes declared layout and style parameters.':'This figure is rendered by Typst. Select a declared control to edit its value; undeclared or computed properties remain source-owned.'));return;}
     const item=(sel.kind==='node'?d.nodes:d.edges).find(n=>n.id===sel.id);if(!item){app.selection=null;renderInspector();return;}
     root.append(html('div','selection-type',sel.kind==='node'?'NODE':'CONNECTION'),html('h2','selection-name',sel.kind==='node'?item.id:item.id.toUpperCase()),html('div','source-line',`Source line ${item.line} · ${sel.kind==='node'?item.kind:'Fletcher edge'}`));
@@ -554,14 +683,12 @@
         app.mountedSvg=svg;app.mountedGestures=gestures;
       }
     }else{app.mountedSvg=null;app.basis=null;app.fidelityLosses=[];$('paper').style.display='none';$('empty').hidden=false;}
-    const fidelityWarning=app.fidelityLosses.length>0;
-    $('preview-status').textContent=app.fixture?(fidelityWarning?'UI fixture · fidelity warning':'UI fixture'):(svg?(fidelityWarning?'Typst preview · fidelity warning':app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable');
+    renderPreviewStatus();
     $('canvas-hint').textContent=app.basis?'Drag a node · Select an edge for routes · Space + drag to pan':'Use Controls for declared parameters · Scroll to zoom · Drag to pan';
     $('undo').disabled=app.busy||!snapshot.undo;$('redo').disabled=app.busy||!snapshot.redo;
     $('save').disabled=app.fixture||app.busy||!snapshot.dirty||!snapshot.preview_current||!!app.mappingError;
     $('render').disabled=app.busy;$('download').disabled=!snapshot.source;
-    const warnings=[...(snapshot.warnings||diagram().warnings)];if(app.mappingError)warnings.push(app.mappingError);if(app.fidelityLosses.length)warnings.push(...app.fidelityLosses.map(loss=>`Preview fidelity warning: ${loss.count} ${loss.kind}${loss.count===1?' was':'s were'} ${loss.reason}.`));if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
-    $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
+    updatePreviewDiagnostics();
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
     $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();routing?.refresh();drawOverlay();
@@ -569,6 +696,7 @@
   }
   async function post(path,body={},options={}){
     if(app.busy)return;
+    if(['/api/edit','/api/undo','/api/redo','/api/render','/api/save'].includes(path)||path.startsWith('/api/project/'))await cancelPreview();
     app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
     try{
       const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,...body})});
@@ -648,5 +776,5 @@
   if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
   fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;applyEnvelope(data);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
   // Read-only observation seam for the browser smoke test; never accepts edits.
-  window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});
+  window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy,preview:{state:app.preview.state,generation:app.preview.generation,identity:app.preview.identity}});
 })();

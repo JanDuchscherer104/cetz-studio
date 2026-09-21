@@ -9,6 +9,7 @@
 /* Proposed routes are an overlay, never a replacement for the Typst preview. */
 .routing-panel{margin:16px 0;padding:16px 20px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .routing-panel h3{font-size:12px;margin:0 0 12px;font-weight:650}
+#preview-status[data-state="queued"],#preview-status[data-state="running"]{color:var(--amber)}#preview-status[data-state="current"]{color:var(--accent)}#preview-status[data-state="failed"]{color:var(--red)}#preview-status[data-state="cancelled"]{color:var(--muted)}
 .routing-panel>select,.routing-panel>input{width:100%;margin-bottom:8px}
 .routing-actions{display:flex;gap:6px;margin-top:8px}.routing-actions button{flex:1;font-size:11px}
 .routing-proposal{fill:none;stroke:#d27b1f;stroke-dasharray:7 4;stroke-linejoin:round;pointer-events:none}
