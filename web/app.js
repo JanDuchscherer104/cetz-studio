@@ -9,7 +9,8 @@
     nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
-    project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null};
+    project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null,
+    panel:null, panelTrigger:null};
   const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
@@ -103,19 +104,58 @@
   function applyPageBackground(){
     $('paper').classList.toggle('transparent-page',$('transparent-page').checked);
   }
+  function narrowPanels(){return window.matchMedia('(max-width: 1000px)').matches;}
+  function syncPanels(){
+    const panels=[
+      ['project',$('project-panel'),$('project-toggle')],
+      ['elements',$('project-panel'),$('elements-toggle')],
+      ['inspector',$('inspector-panel'),$('inspector-toggle')]
+    ];
+    const narrow=narrowPanels();
+    if(!narrow)app.panel=null;
+    for(const [name,panel,toggle] of panels){
+      const open=narrow&&app.panel===name;
+      panel.classList.toggle('panel-open',open);
+      panel.inert=narrow&&!open;
+      panel.setAttribute('aria-hidden',String(narrow&&!open));
+      toggle.setAttribute('aria-expanded',String(open));
+    }
+    $('panel-scrim').hidden=!narrow||app.panel===null;
+  }
+  function closePanel({restore=true}={}){
+    const trigger=app.panelTrigger;
+    app.panel=null;app.panelTrigger=null;syncPanels();
+    if(restore&&trigger?.isConnected)trigger.focus();
+  }
+  function openPanel(name,trigger){
+    if(!narrowPanels())return;
+    if(app.panel===name){closePanel();return;}
+    app.panel=name;app.panelTrigger=trigger||document.activeElement;syncPanels();
+    const panel=$(name==='inspector'?'inspector-panel':'project-panel');
+    panel.querySelector('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')?.focus();
+  }
+  function pageGeometryMatchesViewBox(node,view){
+    if(node.localName!=='path')return false;
+    try{
+      const box=node.getBBox(),close=(a,b)=>Math.abs(a-b)<=Math.max(.01,Math.abs(b)*1e-6);
+      return close(box.x,view.x)&&close(box.y,view.y)&&close(box.width,view.width)&&close(box.height,view.height);
+    }catch{return false;}
+  }
   function identifyPageBackground(svg){
     const background=svg.firstElementChild;
     if(!background)return;
     const fill=(background.getAttribute('fill')||'').replace(/\s/g,'').toLowerCase();
     const white=['white','#fff','#ffffff','rgb(255,255,255)'].includes(fill);
-    const typstPath=background.localName==='path'&&background.classList.contains('typst-shape');
     const view=svg.viewBox.baseVal;
+    const fullPagePath=pageGeometryMatchesViewBox(background,view);
+    const typstPath=background.localName==='path'&&background.classList.contains('typst-shape')&&fullPagePath;
+    const whitePath=background.localName==='path'&&white&&fullPagePath;
     const fixtureRect=background.localName==='rect'
       && Number(background.getAttribute('x')||0)===view.x
       && Number(background.getAttribute('y')||0)===view.y
       && Number(background.getAttribute('width'))===view.width
       && Number(background.getAttribute('height'))===view.height;
-    if(typstPath||(white&&fixtureRect))background.classList.add('studio-page-background');
+    if(typstPath||whitePath||(white&&fixtureRect))background.classList.add('studio-page-background');
   }
   function fit(){const v=$('viewport');app.zoom=Math.max(.08,Math.min(2.5,(v.clientWidth-75)/app.size.w,(v.clientHeight-75)/app.size.h));app.pan={x:(v.clientWidth-app.size.w*app.zoom)/2,y:(v.clientHeight-app.size.h*app.zoom)/2-5};paintTransform();drawOverlay();}
   function zoomBy(factor,x,y){const v=$('viewport').getBoundingClientRect();x=x??v.width/2;y=y??v.height/2;const z=Math.max(.08,Math.min(6,app.zoom*factor)),r=z/app.zoom;app.pan={x:x-(x-app.pan.x)*r,y:y-(y-app.pan.y)*r};app.zoom=z;paintTransform();drawOverlay();}
@@ -133,9 +173,9 @@
     $('figure').replaceChildren(svg);app.svg=svg;
     const vb=svg.viewBox.baseVal;
     if(!(vb.width>0&&vb.height>0))throw new Error('SVG has no valid viewBox');
-    identifyPageBackground(svg);applyPageBackground();
     app.size={w:vb.width,h:vb.height};
     $('paper').style.width=`${vb.width}px`;$('paper').style.height=`${vb.height}px`;$('paper').style.display='block';
+    identifyPageBackground(svg);applyPageBackground();
     $('overlay').setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
     app.basis=null;app.nodeRects=new Map();app.edgePoints=new Map();app.labelRects=new Map();app.locked=new Set();
     $('empty').hidden=true;
@@ -539,6 +579,11 @@
     }catch(e){app.busy=false;if(e.envelope)applyEnvelope(e.envelope);else refresh(app.snapshot);notify(e.message,true);return null;}
     finally{$('busy-overlay').hidden=true;}
   }
+  for(const [name,id] of [['project','project-toggle'],['elements','elements-toggle'],['inspector','inspector-toggle']])$(id).onclick=e=>openPanel(name,e.currentTarget);
+  $('panel-scrim').onclick=()=>closePanel();
+  const panelMedia=window.matchMedia('(max-width: 1000px)');
+  panelMedia.addEventListener?.('change',()=>{if(!narrowPanels())closePanel({restore:false});else syncPanels();});
+  syncPanels();
   $('viewport').addEventListener('pointerdown',e=>{if(!app.busy&&((app.space&&e.button===0)||e.button===1)){e.preventDefault();e.stopPropagation();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}},{capture:true});
   $('viewport').addEventListener('pointerdown',e=>{if(app.busy||e.target.closest?.('.handle,.label-handle,.node-hit,.edge-hit'))return;if(e.button===0||e.button===1){e.preventDefault();app.drag={kind:'pan',screen:{x:e.clientX,y:e.clientY},pan:{...app.pan},moved:false};$('viewport').setPointerCapture(e.pointerId);$('viewport').classList.add('panning');}});
   $('viewport').addEventListener('pointermove',moveDrag);$('viewport').addEventListener('pointerup',endDrag);$('viewport').addEventListener('pointercancel',()=>{app.drag=null;routing?.dragEnded?.();drawOverlay();});
@@ -587,7 +632,7 @@
       const modal=[...$('modal-backdrop').querySelectorAll('.modal')].find(item=>!item.hidden),focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
       if(focusable.length){const first=focusable[0],last=focusable.at(-1);if(!modal.contains(document.activeElement)){e.preventDefault();(e.shiftKey?last:first).focus();}else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
     }
-    if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}$('toast').hidden=true;app.drag=null;routing?.dragEnded?.();app.selection=null;renderInspector();drawOverlay();return;}
+    if(e.key==='Escape'){if(!$('modal-backdrop').hidden){app.pendingProjectAction=null;closeModal();return;}if(app.panel){closePanel();return;}$('toast').hidden=true;app.drag=null;routing?.dragEnded?.();app.selection=null;renderInspector();drawOverlay();return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!$('save').disabled)post('/api/save');return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const redo=e.shiftKey;if(!$(redo?'redo':'undo').disabled)post(redo?'/api/redo':'/api/undo');return;}
     if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;

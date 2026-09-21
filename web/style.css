@@ -30,3 +30,22 @@
 .routing-live{fill:none;stroke:#d99b3d;stroke-width:2;stroke-dasharray:5 4;stroke-linejoin:round;pointer-events:none;vector-effect:non-scaling-stroke}
 #paper.transparent-page{background:transparent;box-shadow:none}
 #paper.transparent-page .studio-page-background{visibility:hidden}
+
+/* At embedded widths the same sidebars become keyboard-operable drawers. */
+.panel-toggle-bar{display:none}
+#panel-scrim{display:none}
+@media(max-width:1000px){
+  main{position:relative;overflow:hidden}
+  .workspace{width:100%}
+  .panel-toggle-bar{display:flex;align-items:center;gap:6px;min-height:38px;padding:5px 8px;border-bottom:1px solid var(--line);background:#111821}
+  .panel-toggle-bar button{font-size:11px;padding:6px 10px}
+  .left,.right{display:flex;position:absolute;top:0;bottom:0;z-index:30;width:min(300px,calc(100vw - 36px));height:auto;transition:transform .16s ease;box-shadow:0 12px 40px #0008}
+  .left{left:0;transform:translateX(-105%)}
+  .right{right:0;transform:translateX(105%)}
+  .left.panel-open,.right.panel-open{transform:translateX(0)}
+  #panel-scrim:not([hidden]){display:block;position:absolute;inset:0;z-index:20;width:100%;height:100%;border:0;border-radius:0;background:#080d146b}
+  .toolbar{height:auto;min-height:50px;max-height:112px;flex-wrap:wrap;overflow-x:hidden;overflow-y:auto;align-content:center;padding:6px 8px}
+  .toolbar-spacer{display:none}
+  .preview-status{display:none}
+  .toolbar #render{display:inline-block}
+}
