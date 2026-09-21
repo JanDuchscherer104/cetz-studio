@@ -10,7 +10,7 @@
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null,
-    panel:null, panelTrigger:null};
+    panel:null, panelTrigger:null, fidelityLosses:[]};
   const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
@@ -27,7 +27,7 @@
     if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
   }
   function applyEnvelope(data){
-    if(data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId){app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;}
+    if(data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId){app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;app.fidelityLosses=[];}
     if(data.session_id!=null)app.sessionId=data.session_id;
     if(data.project!==undefined)app.project=data.project;
     if(data.snapshot)refresh(data.snapshot);else renderProject();
@@ -166,10 +166,12 @@
     return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
   }
   function mountSvg(text){
+    app.fidelityLosses=[];
     const doc=new DOMParser().parseFromString(text,'image/svg+xml');
     if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw new Error('Malformed SVG preview');
-    CetzUi.sanitizeSvg(doc.documentElement);
-    const svg=document.importNode(doc.documentElement,true);
+    const sanitized=CetzUi.sanitizeSvg(doc.documentElement);
+    app.fidelityLosses=sanitized.losses;
+    const svg=document.importNode(sanitized.svg,true);
     $('figure').replaceChildren(svg);app.svg=svg;
     const vb=svg.viewBox.baseVal;
     if(!(vb.width>0&&vb.height>0))throw new Error('SVG has no valid viewBox');
@@ -554,13 +556,14 @@
         try{mountSvg(svg);}catch(e){app.mappingError=e.message;notify(e.message,true);app.basis=null;}
         app.mountedSvg=svg;app.mountedGestures=gestures;
       }
-    }else{app.mountedSvg=null;app.basis=null;$('paper').style.display='none';$('empty').hidden=false;}
-    $('preview-status').textContent=app.fixture?'UI fixture':(svg?(app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable');
+    }else{app.mountedSvg=null;app.basis=null;app.fidelityLosses=[];$('paper').style.display='none';$('empty').hidden=false;}
+    const fidelityWarning=app.fidelityLosses.length>0;
+    $('preview-status').textContent=app.fixture?(fidelityWarning?'UI fixture · fidelity warning':'UI fixture'):(svg?(fidelityWarning?'Typst preview · fidelity warning':app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable');
     $('canvas-hint').textContent=app.basis?'Drag a node · Select an edge for routes · Space + drag to pan':'Use Controls for declared parameters · Scroll to zoom · Drag to pan';
     $('undo').disabled=app.busy||!snapshot.undo;$('redo').disabled=app.busy||!snapshot.redo;
     $('save').disabled=app.fixture||app.busy||!snapshot.dirty||!snapshot.preview_current||!!app.mappingError;
     $('render').disabled=app.busy;$('download').disabled=!snapshot.source;
-    const warnings=[...(snapshot.warnings||diagram().warnings)];if(app.mappingError)warnings.push(app.mappingError);if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
+    const warnings=[...(snapshot.warnings||diagram().warnings)];if(app.mappingError)warnings.push(app.mappingError);if(app.fidelityLosses.length)warnings.push(...app.fidelityLosses.map(loss=>`Preview fidelity warning: ${loss.count} ${loss.kind}${loss.count===1?' was':'s were'} ${loss.reason}.`));if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
     $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}

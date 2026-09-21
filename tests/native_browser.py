@@ -275,6 +275,20 @@ def prepare_project(root: Path) -> dict[str, Path]:
         'First page\n#pagebreak()\nSecond page\n',
         encoding="utf-8",
     )
+    inset = examples / "inset.svg"
+    inset.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20">'
+        '<rect width="40" height="20" fill="#f60"/>'
+        '<circle cx="30" cy="10" r="6" fill="#1683d8"/>'
+        '</svg>\n',
+        encoding="utf-8",
+    )
+    svg_inset = examples / "svg-inset.typ"
+    svg_inset.write_text(
+        '#set page(width: 70mm, height: 40mm, margin: 5mm)\n'
+        'Before inset #image("inset.svg", width: 30mm) After inset\n',
+        encoding="utf-8",
+    )
     rollback = examples / "parameter-rollback.typ"
     rollback.write_text(
         '#import "../typst/cetz-studio/lib.typ" as studio\n'
@@ -288,6 +302,7 @@ def prepare_project(root: Path) -> dict[str, Path]:
         "studio": examples / "studio-cetz.typ",
         "view_only": view_only,
         "multipage": multipage,
+        "svg_inset": svg_inset,
         "rollback": rollback,
     }
 
@@ -449,6 +464,19 @@ def main() -> None:
                     check(not state["parameters"] and not state["capabilities"]["graph_gestures"], "Plain CeTZ exposes no invented controls or graph gestures")
                     check(page.locator("#figure svg").count() == 1 and page.locator("#save").is_disabled(), "View-only UI mounts native SVG and disables Save")
                     screenshot(page, evidence, "view-only")
+                    page.close(run_before_unload=False)
+
+                with running_app(
+                    binary, project, sources["svg_inset"], evidence / "svg-inset.log", environment
+                ) as app:
+                    page = open_page(browser, app.origin, "svg-inset", browser_errors)
+                    inset = page.locator("#figure svg image")
+                    href = inset.evaluate("image => image.getAttribute('href') || image.getAttributeNS('http://www.w3.org/1999/xlink', 'href')") if inset.count() == 1 else None
+                    check(href is not None and href.startswith("data:image/svg+xml;base64,"), "Native Typst SVG inset remains mounted after recursive sanitization")
+                    box = inset.bounding_box()
+                    check(box is not None and box["width"] > 100 and box["height"] > 50, "Native SVG inset retains visible Typst geometry")
+                    check("fidelity warning" not in page.locator("#preview-status").text_content().lower(), "Retained SVG inset does not mark the preview degraded")
+                    screenshot(page, evidence, "svg-inset")
                     page.close(run_before_unload=False)
 
                 with running_app(
