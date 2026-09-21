@@ -1,0 +1,56 @@
+name: Library control adapters
+on:
+  pull_request:
+    paths:
+      - 'src/parameters.rs'
+      - 'src/parameters/**'
+      - 'tests/parameter_discovery.rs'
+      - 'tests/library_controls.rs'
+      - 'tests/fixtures/library-controls/**'
+      - '.github/workflows/controls.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/parameters.rs'
+      - 'src/parameters/**'
+      - 'tests/parameter_discovery.rs'
+      - 'tests/library_controls.rs'
+      - 'tests/fixtures/library-controls/**'
+      - '.github/workflows/controls.yml'
+permissions:
+  contents: read
+jobs:
+  focused-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Test source discovery through the public interface
+        run: cargo test --locked --test parameter_discovery
+      - name: Formatting diagnostic
+        if: always()
+        run: |
+          cargo fmt --all
+          git diff -- src tests > formatting.patch
+          test ! -s formatting.patch
+      - name: Retain diagnosis and exact source context
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-parser-diagnostics
+          path: |
+            formatting.patch
+            src/parameters.rs
+            src/parameters/
+            tests/parameter_discovery.rs
+            tests/library_controls.rs
+            tests/native_browser.py
+            tests/parameters.rs
+          if-no-files-found: ignore
