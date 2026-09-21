@@ -10,6 +10,16 @@ Ubuntu Linux x86_64; Rust/Cargo 1.95.0; Typst 0.14.2; Google Chrome driven by
 Python Playwright 1.63.0. Fletcher 0.5.8 and CeTZ 0.5.2 are pinned in examples
 and the package. All editable test sources are disposable copies.
 
+For a clean checkout, complete the [README local build bootstrap](README.md#run-locally)
+before running any Cargo or preview command: install Node.js 22 or newer, then
+run `npm ci --ignore-scripts --no-audit --no-fund` followed by `npm run build:web`.
+The frontend bundle is embedded by the native binary and is intentionally
+ignored by Git, so `cargo check`/`cargo build` cannot run first in an archive
+that has no `web/dist`. The same bootstrap is performed by `scripts/verify.sh`.
+If files under `web/src` change, rerun `npm run build:web` before rebuilding the
+binary. This uses the repository's local frontend dependencies only; the
+running editor does not start Node or fetch a CDN.
+
 Initial scaffold acceptance on 2026-09-19 passed: formatting, Clippy, **42 Rust contract
 tests**, **5 real Typst integration tests**, package positive/negative checks,
 **23 synthetic browser checks**, and **35 native browser checks** with no
@@ -49,9 +59,11 @@ insertion, recompiled to an 11-node preview, and left the original source clean.
 | `python3 tests/workspace_browser.py --binary target/debug/cetz-studio` | Project switching, graph/content authoring, deletion, manual routes |
 | `python3 tests/routing_browser.py --binary target/debug/cetz-studio` | Proposed routes, fixed geometry, source fidelity, stale/conflict refusal |
 
-Run `cargo build --locked` before browser checks so the embedded UI matches the
-source. Run `python3 scripts/build_ui_preview.py` before the synthetic fixture
-checks. See the README for the optional Playwright environment.
+Run `cargo build --locked` after the frontend bootstrap and before browser
+checks so the embedded UI matches the source. Run
+`python3 scripts/build_ui_preview.py` after that bootstrap and before the
+synthetic fixture checks. See the README for the optional Playwright
+environment.
 
 The native browser suite covers a node edit, exact draft diff, undo/redo,
 explicit save, original-content backup, reopen, numeric/color/boolean controls,
