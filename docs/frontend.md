@@ -63,3 +63,32 @@ undo and save/reopen. Since widgets constrain range inputs, the Scenery suite
 also sends an invalid command directly to prove server-side rejection remains.
 Pointer tests, not only typed-input tests, cover integer and fractional grids,
 non-grid initial values, non-grid maxima, and floating-point range endpoints.
+
+## Drag routing
+
+maxGraph 0.24.0's ManhattanConnector replaces the browser's handwritten A*.
+The adapter constructs a disposable graph from already measured rectangles and
+ports; it does not introduce a persistent graph document, history, or full
+maxGraph editor UI. A small output validator checks exact endpoints, cardinal
+exit/entry direction, orthogonality and obstacle intersections. Upstream fallback
+paths or geometry failures that fail these checks produce no hint. There is no
+second handwritten fallback algorithm.
+
+Fractional attachment coordinates are restored after upstream 0.1-unit rounding
+and the resulting segments are rechecked. Ports are represented by small
+non-degenerate terminal boxes so upstream fallback inference is defined; the
+requested side is exactly the measured endpoint. Missing obstacle bounds, unknown
+port directions, curves and unsupported edges are not granted edit capability.
+
+Hints are bounded to 128 known obstacles, a 4096-unit SVG extent, 1000 upstream
+search iterations per edge and 128 returned vertices. Each animation frame tries
+at most eight incident edges and stops starting work after 24 ms; this is not a
+hard per-frame deadline because an in-flight search cannot be preempted. Selection
+revision changes and drag cancellation discard the transient projection.
+
+The server's independently measured/adoptable router remains unchanged. A browser
+hint never supplies an adoptable route or source patch, and need not match the
+server's crossing-aware batch result. Full canvas replacement, libavoid and
+single-engine browser/server routing are not delivered by this narrow change.
+Use `tests/drag_router_browser.py` for actual library cases and
+`tests/drag_preview_native.py` for real pointer/source/save acceptance.

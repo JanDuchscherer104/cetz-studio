@@ -60,3 +60,8 @@ The unmodified upstream license from the 4.0.5 tag is retained in
 `docs/licenses/tweakpane-MIT.txt` and appended to the embedded/served
 `/vendor-licenses.txt`. The npm lock pins its distribution integrity.
 Source: https://github.com/cocopon/tweakpane/tree/4.0.5.
+
+maxGraph 0.24.0 supplies the Manhattan obstacle-routing algorithm for ephemeral
+browser hints under Apache-2.0. Its package LICENSE is appended unmodified to
+`/vendor-licenses.txt`; bundled upstream headers and third-party attributions are
+retained. Source: https://github.com/maxGraph/maxGraph/tree/v0.24.0.

@@ -30,6 +30,7 @@ jobs:
           python -m playwright install --with-deps chromium
           python tests/svg_browser.py
           python tests/controls_browser.py
+          python tests/drag_router_browser.py
       - name: Package reproducible review inputs
         if: always()
         run: |

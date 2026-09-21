@@ -140,6 +140,17 @@ jobs:
       - name: Verify native obstacle-routing browser workflow
         run: python tests/routing_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio" --output-dir .ci/routing
 
+      - name: Verify native upstream drag previews
+        run: python tests/drag_preview_native.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
+
+      - name: Retain native upstream drag evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drag-preview-${{ matrix.os }}
+          path: .ci/drag-preview
+          if-no-files-found: ignore
+
       - name: Record release deployment size
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cetz-studio-target
