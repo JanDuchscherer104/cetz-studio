@@ -60,7 +60,10 @@ cd cetz-studio
 cargo run --locked --release -- --file examples/studio-workspace.typ --root .
 ```
 
-Open **http://127.0.0.1:3847**. Use that exact address rather than `localhost`.
+Open **http://127.0.0.1:3847** (or `http://localhost:3847`). In VS Code Remote,
+use the address shown in the **Ports** view or the integrated browser; Studio
+recognizes VS Code's authenticated forwarded origins while remaining bound to
+the remote machine's loopback interface.
 The first compilation can download pinned Typst packages; if needed, add
 `--compile-timeout 120`. `Ctrl+C` stops the process.
 
