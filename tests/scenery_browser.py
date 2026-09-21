@@ -136,6 +136,28 @@ def main() -> None:
                         (evidence / "before.svg").write_text(state["svg"], encoding="utf-8")
                         screenshot(page, evidence, "before")
 
+                        # A real pointer slider must emit a source-step value,
+                        # not merely look usable while Rust rejects its output.
+                        page.locator("#parameters-tab").click()
+                        page.locator('[data-element="view-azimuth-deg"]').click()
+                        track = page.locator("#parameter-pane .tp-sldv_t").bounding_box()
+                        if track is None:
+                            raise AssertionError("Declared camera slider is missing")
+                        page.mouse.click(track["x"] + 0.433 * track["width"], track["y"] + track["height"] / 2)
+                        staged = float(page.locator("#parameter-value").input_value())
+                        check(staged.is_integer() and -180 <= staged <= 180, "Pointer slider stages an admitted camera step")
+                        check(browser_snapshot(page)["revision"] == state["revision"], "Pointer slider does not emit an early source command")
+                        page.locator("#apply-parameter").click()
+                        pointer_state = wait_revision(page, state["revision"])
+                        pointer_expected = original.replace("studio.param(-38,", f"studio.param({int(staged)},", 1)
+                        check(pointer_state["source"] == pointer_expected, "Pointer Apply compiles the exact displayed camera value")
+                        check(source.read_text(encoding="utf-8") == original, "Pointer Apply leaves disk untouched")
+                        check(data_file.read_bytes() == data_before, "Pointer Apply leaves scientific data untouched")
+                        check(regions(browser, pointer_state["svg"])[1] == before_right, "Pointer Apply preserves the companion projection")
+                        page.locator("#undo").click()
+                        state = wait_revision(page, pointer_state["revision"])
+                        check(state["source"] == original, "Pointer change undoes to the exact initial source")
+
                         expected = original
                         previous_left = before_left
                         changes = [
@@ -161,8 +183,26 @@ def main() -> None:
                         screenshot(page, evidence, "after")
                         before_invalid = state
                         error_start = len(errors)
-                        state = reject_parameter(page, "view-azimuth-deg", "181")
-                        check(state["source"] == before_invalid["source"] and state["revision"] == before_invalid["revision"], "Out-of-range control preserves draft/revision")
+                        # Tweakpane clamps the staged value. Verify that no edit occurs
+                        # without Apply, and bypass the widget to retain server rejection proof.
+                        page.locator("#parameters-tab").click()
+                        page.locator('[data-element="view-azimuth-deg"]').click()
+                        page.locator("#parameter-value").fill("181")
+                        page.locator("#parameters-tab").click()
+                        check(page.locator("#parameter-value").input_value() == "180", "Range widget displays constrained value before Apply")
+                        check(browser_snapshot(page)["revision"] == before_invalid["revision"], "Widget staging does not edit the accepted draft")
+                        rejected_status = page.evaluate("""async () => {
+                          const state = await (await fetch('/api/state')).json();
+                          const response = await fetch('/api/edit', {
+                            method:'POST', headers:{'Content-Type':'application/json', 'X-Cetz-Studio-Token':state.token},
+                            body:JSON.stringify({session_id:state.session_id,revision:state.snapshot.revision,
+                              command:{kind:'set_parameter',id:'view-azimuth-deg',value:181}})
+                          });
+                          return response.status;
+                        }""")
+                        check(rejected_status == 409, "Rust rejects an out-of-range value without relying on widgets")
+                        state = browser_snapshot(page)
+                        check(state["source"] == before_invalid["source"] and state["revision"] == before_invalid["revision"], "Out-of-range request preserves draft/revision")
                         check(source.read_text(encoding="utf-8") == original, "Rejected value never writes disk")
                         # Filter only the expected rejected-request console message
                         # from this operation; retain all JavaScript exceptions.

@@ -521,6 +521,14 @@ fn main() -> Result<()> {
                 "text/javascript; charset=utf-8",
                 include_str!("../web/app.js"),
             )),
+            (&Method::Get, "/ui.js") => Some((
+                "text/javascript; charset=utf-8",
+                include_str!("../web/dist/ui.js"),
+            )),
+            (&Method::Get, "/vendor-licenses.txt") => Some((
+                "text/plain; charset=utf-8",
+                include_str!("../web/dist/licenses.txt"),
+            )),
             (&Method::Get, "/routing.js") => Some((
                 "text/javascript; charset=utf-8",
                 include_str!("../web/routing.js"),
