@@ -73,6 +73,7 @@ pub struct Status {
 /// One active child and one replaceable pending candidate.  A replacement
 /// cancels the active compiler at its cancellation boundary and overwrites the
 /// pending candidate; this bounds both subprocesses and queued input.
+#[derive(Default)]
 pub struct Jobs {
     running: Option<Running>,
     pending: Option<Work>,
@@ -80,19 +81,6 @@ pub struct Jobs {
     completed: Option<Completed>,
     failure: Option<String>,
     cancelled: bool,
-}
-
-impl Default for Jobs {
-    fn default() -> Self {
-        Self {
-            running: None,
-            pending: None,
-            latest: None,
-            completed: None,
-            failure: None,
-            cancelled: false,
-        }
-    }
 }
 
 impl Jobs {
