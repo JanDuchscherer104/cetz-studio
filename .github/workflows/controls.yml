@@ -1,0 +1,76 @@
+name: Library control adapters
+on:
+  pull_request:
+    paths:
+      - 'src/parameters.rs'
+      - 'src/parameters/**'
+      - 'tests/parameter_discovery.rs'
+      - 'tests/library_controls*'
+      - 'tests/fixtures/library-controls/**'
+      - '.github/workflows/controls.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/parameters.rs'
+      - 'src/parameters/**'
+      - 'tests/parameter_discovery.rs'
+      - 'tests/library_controls*'
+      - 'tests/fixtures/library-controls/**'
+      - '.github/workflows/controls.yml'
+permissions:
+  contents: read
+jobs:
+  focused-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Test source discovery through the public interface
+        run: cargo test --locked --test parameter_discovery
+      - name: Install pinned native Typst
+        run: |
+          mkdir -p "$RUNNER_TEMP/typst"
+          curl --fail --location --retry 3 https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-unknown-linux-musl.tar.xz -o "$RUNNER_TEMP/typst.tar.xz"
+          tar -xJf "$RUNNER_TEMP/typst.tar.xz" --strip-components=1 -C "$RUNNER_TEMP/typst"
+          echo "$RUNNER_TEMP/typst" >> "$GITHUB_PATH"
+      - name: Test native library round trips
+        run: cargo test --locked --test library_controls -- --ignored
+      - name: Build editor for the native browser
+        run: cargo build --locked
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright==1.63.0
+          python -m playwright install --with-deps chromium
+      - name: Test the actual controls panel
+        run: python tests/library_controls_browser.py --binary target/debug/cetz-studio
+      - name: Formatting diagnostic
+        if: always()
+        run: |
+          cargo fmt --all
+          git diff -- src tests > formatting.patch
+          test ! -s formatting.patch
+      - name: Retain native evidence and diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-parser-diagnostics
+          path: |
+            formatting.patch
+            .ci/library-controls/
+            src/parameters.rs
+            src/parameters/
+            tests/parameter_discovery.rs
+            tests/library_controls.rs
+            tests/native_browser.py
+          include-hidden-files: true
+          if-no-files-found: ignore
