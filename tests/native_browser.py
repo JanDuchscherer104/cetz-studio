@@ -460,9 +460,10 @@ def main() -> None:
                 ) as app:
                     page = open_page(browser, app.origin, "view-only", browser_errors)
                     state = browser_snapshot(page)
-                    check(state["mode"] == "render_only" and state["preview_current"], "Plain CeTZ opens as a current render-only preview")
-                    check(not state["parameters"] and not state["capabilities"]["graph_gestures"], "Plain CeTZ exposes no invented controls or graph gestures")
-                    check(page.locator("#figure svg").count() == 1 and page.locator("#save").is_disabled(), "View-only UI mounts native SVG and disables Save")
+                    check(state["mode"] == "parameter_editing" and state["preview_current"], "Plain CeTZ opens as a current inferred-controls preview")
+                    check(any((parameter.get("origin") or {}).get("package") == "cetz:0.5.2" for parameter in state["parameters"]), "Plain CeTZ exposes only reviewed CeTZ source controls")
+                    check(not state["capabilities"]["graph_gestures"], "Inferred CeTZ controls do not invent graph gestures")
+                    check(page.locator("#figure svg").count() == 1 and page.locator("#save").is_disabled(), "Inferred-controls UI mounts native SVG and keeps Save disabled")
                     screenshot(page, evidence, "view-only")
                     page.close(run_before_unload=False)
 
