@@ -94,8 +94,10 @@ success rate.
 
 - The save check and atomic rename cannot exclude a non-cooperating concurrent
   writer in their final interval. Source dependencies are not locked.
-- Persistent compiler reuse and general asynchronous compilation are not
-  implemented. Routing proposals run in one bounded background worker.
+- Tentative browser previews have one bounded asynchronous compiler plus one
+  replaceable pending candidate. Persistent compiler reuse, dependency-aware
+  caching and filesystem watching are not implemented. Routing proposals use a
+  separate bounded background worker.
 - Generated-object overrides, arbitrary CeTZ canvas insertion, and deleting the
   final graph node are not supported. Declared controls remain the edit seam for
   generated drawings; recognized content arguments have a direct Typst editor.

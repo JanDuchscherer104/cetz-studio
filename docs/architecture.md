@@ -72,21 +72,25 @@ layout commands do not rewrite scientific data or mathematical content.
 
 ## Performance and simplification
 
-The original prototype launches a new compiler for every accepted edit and for
-undo/redo. Its synchronous request loop can block during compilation. Measure
-cold open, warm edit-to-preview latency, SVG size, and memory before a runtime change.
+Accepted edits and undo/redo still compile serially before changing the session.
+Tentative browser previews use one bounded background compiler and one replaceable
+pending candidate. Each result carries session, base revision, source, compiler
+configuration and browser-generation identity; only the newest matching candidate
+is displayed. Cancellation is best-effort at the compiler boundary, and a failed
+candidate leaves the accepted image, source and history intact.
 
 The browser now retains its mounted SVG when output and gesture capabilities
 are unchanged, avoiding repeated parsing and geometry reads during request-state
 updates. Drag feedback stays local; compilation occurs on release. Narrow
 patches preserve formatting instead of regenerating the whole source.
 
-A future scheduler should keep HTTP responsive, coalesce obsolete work, and
-adopt only matching revisions. Incremental compilation is promising, but caches
-must track imports, fonts, package/compiler versions, and data files. A source-only
-cache key is insufficient. Neither a persistent compiler nor a background
-scheduler is claimed in 0.1. Optional edge-routing proposals use one bounded
-background worker; ordinary compilation and route adoption remain synchronous.
+The preview scheduler keeps status/cancellation and navigation responsive, but
+does not make the compiler faster or turn tentative work into an accepted draft.
+Incremental compilation is promising only after measurement; a cache must track
+imports, fonts, package/compiler versions and data files, not source alone.
+Persistent compiler reuse, filesystem watching and dependency reconciliation are
+not part of this scheduler. Optional edge-routing proposals use a separate bounded
+background worker; route adoption remains synchronous.
 
 Keep syntax/validation behind the source-edit interface. Tests exercise source
 changes, rollback, capabilities, and round-trips. Avoid a general plugin framework

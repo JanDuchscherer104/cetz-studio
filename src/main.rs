@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use cetz_studio::{
-    edit, model,
+    edit, model, preview,
     project::{relative_key, require_clean, Project, ProjectSnapshot},
     render::Compiler,
     routing,
@@ -61,6 +61,32 @@ struct Revision {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PreviewRequest {
+    session_id: u64,
+    revision: u64,
+    client_id: String,
+    generation: u64,
+    command: edit::Command,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviewResetRequest {
+    session_id: u64,
+    revision: u64,
+    client_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviewCancelRequest {
+    session_id: u64,
+    revision: u64,
+    client_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ProjectPath {
     #[serde(default)]
     session_id: Option<u64>,
@@ -115,6 +141,7 @@ struct AppState {
     session_id: u64,
     scale: Option<f64>,
     routing: routing::jobs::Jobs,
+    preview: preview::Jobs,
 }
 
 impl AppState {
@@ -148,8 +175,19 @@ impl AppState {
             .snapshot(&self.session.path, self.session.snapshot().dirty)
     }
 
-    fn json(&self) -> Value {
-        json!({"session_id":self.session_id,"snapshot":self.session.snapshot(),"project":self.project_snapshot()})
+    fn preview_identity(&self) -> preview::BaseIdentity {
+        preview::BaseIdentity {
+            session_id: self.session_id,
+            base_revision: self.session.revision,
+            source_hash: self.session.source_hash(),
+            compiler_config: self.session.compiler_config_hash(),
+        }
+    }
+
+    fn json(&mut self) -> Value {
+        let preview_identity = self.preview_identity();
+        let preview = self.preview.status(&preview_identity);
+        json!({"session_id":self.session_id,"snapshot":self.session.snapshot(),"project":self.project_snapshot(),"preview":preview})
     }
 
     fn check_identity(&self, session_id: Option<u64>) -> Result<()> {
@@ -321,6 +359,7 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
             Ok(value)
         }
         (&Method::Get, "/api/project") => Ok(state.json()),
+        (&Method::Get, "/api/preview/status") => Ok(state.json()),
         (&Method::Get, "/api/routing/status") => Ok(state.routing_status()),
         (&Method::Post, path) => {
             ensure!(
@@ -381,6 +420,39 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
                     let r: EditRequest = json_body(request)?;
                     state.check_identity(r.session_id)?;
                     state.session.edit(r.revision, r.command)?;
+                }
+                "/api/preview" => {
+                    let r: PreviewRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    let input = state.session.preview(r.revision, &r.command)?;
+                    let base = state.preview_identity();
+                    let identity = preview::Identity {
+                        base: base.clone(),
+                        client_id: r.client_id,
+                        request_generation: r.generation,
+                        candidate_hash: cetz_studio::session::hash(input.source.as_bytes()),
+                    };
+                    state
+                        .preview
+                        .start(preview::Work { identity, input }, &base)?;
+                }
+                "/api/preview/reset" => {
+                    let r: PreviewResetRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    state.session.check_revision(r.revision)?;
+                    ensure!(
+                        !r.client_id.is_empty() && r.client_id.len() <= 128,
+                        "Preview client identity must be 1–128 bytes"
+                    );
+                    let base = state.preview_identity();
+                    state.preview.reset(r.client_id, &base);
+                }
+                "/api/preview/cancel" => {
+                    let r: PreviewCancelRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    state.session.check_revision(r.revision)?;
+                    let base = state.preview_identity();
+                    state.preview.cancel(&r.client_id, &base)?;
                 }
                 "/api/undo" | "/api/redo" => {
                     let r: Revision = json_body(request)?;
@@ -490,6 +562,7 @@ fn main() -> Result<()> {
         session_id: 1,
         scale: args.y_scale,
         routing: routing::jobs::Jobs::default(),
+        preview: preview::Jobs::default(),
     };
     let host = format!("127.0.0.1:{}", args.port);
     let origin = format!("http://{host}");

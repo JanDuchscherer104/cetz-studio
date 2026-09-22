@@ -1,4 +1,4 @@
-"""Verify Transparent mode against an actual Typst 0.15 page and foreground path."""
+"""Verify Transparent mode against actual Typst page and foreground geometry."""
 
 from __future__ import annotations
 
@@ -50,9 +50,10 @@ def main() -> None:
                     try:
                         before = browser_snapshot(page)
                         check(page.locator("#fixture-banner").is_hidden(), "Native page is not the synthetic fixture")
-                        check(page.locator("#figure svg > path").count() >= 2, "Typst emits a page path and a foreground path")
-                        check(page.locator("#figure .studio-page-background").count() == 1, "Typst 0.15 page backdrop is identified by geometry")
-                        check(page.locator("#figure svg > path").nth(1).evaluate("node => !node.classList.contains('studio-page-background')"), "Foreground path remains visible")
+                        shapes = page.locator("#figure svg > *")
+                        check(shapes.count() >= 2, "Typst emits a page backdrop and foreground geometry")
+                        check(page.locator("#figure .studio-page-background").count() == 1, "Typst page backdrop is identified by geometry")
+                        check(page.locator("#figure svg > *:not(.studio-page-background)").count() >= 1, "Foreground geometry remains visible")
                         page.locator("#transparent-page").check()
                         check(page.locator("#paper").evaluate("node => node.classList.contains('transparent-page')"), "Transparent mode updates only the display class")
                         check(page.locator("#figure .studio-page-background").evaluate("node => getComputedStyle(node).visibility === 'hidden'"), "Transparent mode hides the page backdrop")

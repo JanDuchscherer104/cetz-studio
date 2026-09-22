@@ -4,13 +4,17 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const NS = 'http://www.w3.org/2000/svg';
+  const clientId = globalThis.crypto?.randomUUID?.() || `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const app = {snapshot:null, token:'', selection:null, list:'nodes', busy:false,
     zoom:1, pan:{x:0,y:0}, size:{w:600,h:400}, svg:null, markers:new Map(),
     nodeRects:new Map(), edgePoints:new Map(), labelRects:new Map(), basis:null,
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null,
-    panel:null, panelTrigger:null, fidelityLosses:[]};
+    panel:null, panelTrigger:null, fidelityLosses:[], previewVisible:false, previewReady:false, focusedParameter:null,
+    clientId,
+    preview:{generation:0,state:'idle',identity:null,diagnostics:null,pages:null,svg:null,timer:null,poll:null}};
+  const textPreviews=new Set();
   const routing=window.CetzRouting?.create({app,post,notify,drawOverlay,worldToSvg});
   let toastTimer;
   const el = (tag, attrs={}) => {const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
@@ -20,15 +24,154 @@
   const diagram = () => app.snapshot?.diagram || {nodes:[], edges:[], warnings:[]};
   const parameters = () => app.snapshot?.parameters || [];
   const graphGestures = () => app.snapshot?.capabilities?.graph_gestures ?? !!app.snapshot?.diagram;
-  const structuralEdits = () => graphGestures() && !!app.snapshot?.preview_current && !app.mappingError;
+  const structuralEdits = () => graphGestures() && app.previewReady && !!app.snapshot?.preview_current && !app.mappingError && !app.previewVisible;
   const insertionAvailable = () => structuralEdits() && (app.fixture||!!diagram().insert_primitives?.length);
   function notify(message, error=false) {
     $('status').textContent=message;
     if(error){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,12000);}
   }
+  function previewStatusText(){
+    const state=app.preview.state;
+    if(app.fixture)return app.fidelityLosses.length?'UI fixture · fidelity warning':'UI fixture';
+    if(state==='queued')return 'Preview queued · showing last valid';
+    if(state==='running')return 'Preview running · showing last valid';
+    if(state==='current')return 'Preview ready · Apply to adopt';
+    if(state==='failed')return 'Preview failed · showing last valid';
+    if(state==='cancelled')return 'Preview cancelled · showing last valid';
+    const svg=app.snapshot?.pages?.length?app.snapshot.pages[app.page]:app.snapshot?.svg;
+    return svg?(app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable';
+  }
+  function renderPreviewStatus(){
+    $('preview-status').textContent=previewStatusText();
+    $('preview-status').dataset.state=app.preview.state;
+    $('preview-status').title=app.preview.diagnostics||'';
+  }
+  function previewEnvelope(data, generation){
+    if(generation!==app.preview.generation||!data.preview)return false;
+    const preview=data.preview;
+    const identity=preview.identity||{};
+    if(identity.session_id!=null&&identity.session_id!==app.sessionId)return false;
+    if(identity.client_id!=null&&identity.client_id!==app.clientId)return false;
+    if(identity.base_revision!=null&&identity.base_revision!==app.snapshot?.revision)return false;
+    if(identity.request_generation!=null&&identity.request_generation!==generation)return false;
+    app.preview.state=preview.state||'idle';
+    app.preview.identity=preview.identity||null;
+    app.preview.diagnostics=preview.diagnostics||null;
+    app.preview.pages=preview.pages||null;
+    app.preview.svg=preview.svg||null;
+    renderPreviewStatus();
+    return true;
+  }
+  function previewStatusTextForDiagnostics(){
+    return app.preview.diagnostics&&app.preview.state==='failed'?`Tentative preview failed: ${app.preview.diagnostics}`:null;
+  }
+  function previewDiagnostics(){
+    const warnings=[...(app.snapshot?.warnings||diagram().warnings)];
+    if(app.mappingError)warnings.push(app.mappingError);
+    if(app.fidelityLosses.length)warnings.push(...app.fidelityLosses.map(loss=>`Preview fidelity warning: ${loss.count} ${loss.kind}${loss.count===1?' was':'s were'} ${loss.reason}.`));
+    if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
+    const tentative=previewStatusTextForDiagnostics();if(tentative)warnings.push(tentative);
+    return warnings;
+  }
+  function updatePreviewDiagnostics(){
+    const warnings=previewDiagnostics();
+    $('warning-count').textContent=warnings.length+(app.snapshot?.diagnostics?1:0);
+    $('diagnostics').textContent=[...warnings,app.snapshot?.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
+  }
+  function previewCandidateSvg(){
+    const pages=app.preview.pages?.length?app.preview.pages:app.preview.svg?[app.preview.svg]:[];
+    return pages[app.page];
+  }
+  function showPreviewCandidate(){
+    const svg=previewCandidateSvg();
+    if(app.preview.state!=='current'||!svg)return;
+    // Candidate previews are display-only. They must never replace accepted
+    // geometry or leave accepted-source hit targets over tentative geometry.
+    try{app.previewVisible=true;mountSvg(svg,{interactive:false});drawOverlay();}
+    catch(error){app.previewVisible=true;restoreAcceptedPreview();app.previewVisible=false;}
+    updatePreviewDiagnostics();
+  }
+  function restoreAcceptedPreview(){
+    if(!app.previewVisible)return;
+    app.previewVisible=false;
+    const pages=app.snapshot?.pages?.length?app.snapshot.pages:app.snapshot?.svg?[app.snapshot.svg]:[];
+    const svg=pages[app.page];
+    if(svg)try{mountSvg(svg);}catch{app.basis=null;app.nodeRects=new Map();app.edgePoints=new Map();app.labelRects=new Map();app.locked=new Set();}
+    else $('overlay').replaceChildren();
+    drawOverlay();
+  }
+  function stopPreviewPolling(){if(app.preview.poll){clearTimeout(app.preview.poll);app.preview.poll=null;}}
+  async function pollPreview(generation){
+    if(generation!==app.preview.generation||app.fixture)return;
+    try{
+      const response=await fetch('/api/preview/status',{headers:{'X-Cetz-Studio-Token':app.token,'X-Cetz-Studio-Client':app.clientId}});
+      const data=await response.json();
+      if(!response.ok)throw Object.assign(new Error(data.error||'Preview status failed'),{envelope:data});
+      if(!previewEnvelope(data,generation))return;
+      if(app.preview.state==='current')showPreviewCandidate();
+      if(['queued','running'].includes(app.preview.state))app.preview.poll=setTimeout(()=>pollPreview(generation),80);else stopPreviewPolling();
+    }catch(error){
+      if(generation!==app.preview.generation)return;
+      restoreAcceptedPreview();app.preview.state='failed';app.preview.diagnostics=error.message;renderPreviewStatus();updatePreviewDiagnostics();stopPreviewPolling();
+    }
+  }
+  function preview(command, transaction){
+    if(app.fixture||!app.previewReady||!app.snapshot||app.busy)return;
+    restoreAcceptedPreview();
+    const generation=++app.preview.generation;stopPreviewPolling();
+    app.preview.state='queued';app.preview.identity={session_id:app.sessionId,base_revision:app.snapshot.revision,request_generation:generation,transaction_id:transaction||null};app.preview.diagnostics=null;app.preview.pages=null;app.preview.svg=null;renderPreviewStatus();updatePreviewDiagnostics();
+    fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token,'X-Cetz-Studio-Client':app.clientId},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,generation,client_id:app.clientId,command})})
+      .then(async response=>{const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Preview request failed'),{envelope:data});if(!previewEnvelope(data,generation))return;if(app.preview.state==='current')showPreviewCandidate();else if(['queued','running'].includes(app.preview.state))app.preview.poll=setTimeout(()=>pollPreview(generation),80);})
+      .catch(error=>{if(generation!==app.preview.generation)return;restoreAcceptedPreview();app.preview.state='failed';app.preview.diagnostics=error.message;renderPreviewStatus();updatePreviewDiagnostics();});
+  }
+  function tentativeTextIsValid(value){
+    // Typst syntax belongs to the compiler. In particular, apostrophes are
+    // valid content and are not a JavaScript-style string delimiter here.
+    return Boolean(value.trim());
+  }
+  function scheduleTextPreview(command, value, transaction, state){
+    clearTimeout(state.timer);state.timer=null;if(!tentativeTextIsValid(value))return;
+    state.timer=setTimeout(()=>{
+      state.timer=null;
+      const sameSelection=app.selection?.kind===state.kind&&app.selection?.id===state.objectId;
+      if(state.disposed||!state.input.isConnected||state.sessionId!==app.sessionId||state.revision!==app.snapshot?.revision||!sameSelection)return;
+      preview(command(),transaction);
+    },400);
+  }
+  function disposeTextPreviews(){
+    for(const state of textPreviews){clearTimeout(state.timer);state.timer=null;state.disposed=true;}
+    textPreviews.clear();
+  }
+  async function cancelPreview(){
+    const hadPreview=app.preview.state!=='idle'||app.previewVisible;
+    stopPreviewPolling();
+    const generation=++app.preview.generation;restoreAcceptedPreview();
+    app.preview.identity=null;app.preview.pages=null;app.preview.svg=null;app.preview.diagnostics=null;app.preview.state=hadPreview?'cancelled':'idle';renderPreviewStatus();
+    if(!hadPreview||app.fixture)return;
+    try{await fetch('/api/preview/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token,'X-Cetz-Studio-Client':app.clientId},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot?.revision,client_id:app.clientId})});}catch{}
+    if(generation===app.preview.generation)updatePreviewDiagnostics();
+  }
+  async function resetPreviewClient(data){
+    if(app.fixture||!data.snapshot){app.previewReady=true;return;}
+    const response=await fetch('/api/preview/reset',{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token,'X-Cetz-Studio-Client':app.clientId},body:JSON.stringify({session_id:data.session_id,revision:data.snapshot.revision,client_id:app.clientId})});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload.error||'Preview session reset failed');
+    if(app.sessionId===data.session_id)app.previewReady=true;
+  }
   function applyEnvelope(data){
-    if(data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId){app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;app.fidelityLosses=[];}
+    const sessionChanged=data.session_id!=null&&app.sessionId!=null&&data.session_id!==app.sessionId;
+    if(data.snapshot){
+      restoreAcceptedPreview();
+      disposeTextPreviews();
+    }
+    if(sessionChanged){app.previewReady=app.fixture;app.selection=null;app.copiedNode=null;app.page=0;app.first=true;app.mountedSvg=null;app.fidelityLosses=[];}
     if(data.session_id!=null)app.sessionId=data.session_id;
+    const needsReset=!!data.snapshot&&!app.fixture&&(!app.previewReady||sessionChanged);
+    if(needsReset)resetPreviewClient(data).catch(error=>notify(error.message,true));
+    if(data.snapshot){
+      stopPreviewPolling();
+      app.preview.generation+=1;app.preview.state='idle';app.preview.identity=null;app.preview.diagnostics=null;app.preview.pages=null;app.preview.svg=null;app.previewVisible=false;
+    }
     if(data.project!==undefined)app.project=data.project;
     if(data.snapshot)refresh(data.snapshot);else renderProject();
   }
@@ -108,15 +251,19 @@
   function syncPanels(){
     const narrow=narrowPanels();
     if(!narrow)app.panel=null;
-    const projectOpen=narrow&&(app.panel==='project'||app.panel==='elements');
+    const projectOpen=narrow&&['project','elements'].includes(app.panel);
     const inspectorOpen=narrow&&app.panel==='inspector';
-    for(const [name,toggle] of [['project',$('project-toggle')],['elements',$('elements-toggle')],['inspector',$('inspector-toggle')]])
-      toggle.setAttribute('aria-expanded',String(narrow&&app.panel===name));
     for(const [panel,open] of [[$('project-panel'),projectOpen],[$('inspector-panel'),inspectorOpen]]){
       panel.classList.toggle('panel-open',open);
       panel.inert=narrow&&!open;
       panel.setAttribute('aria-hidden',String(narrow&&!open));
     }
+    $('project-toggle').setAttribute('aria-expanded',String(narrow&&app.panel==='project'));
+    $('elements-toggle').setAttribute('aria-expanded',String(narrow&&app.panel==='elements'));
+    $('inspector-toggle').setAttribute('aria-expanded',String(inspectorOpen));
+    $('project-toggle').setAttribute('aria-expanded',String(narrow&&app.panel==='project'));
+    $('elements-toggle').setAttribute('aria-expanded',String(narrow&&app.panel==='elements'));
+    $('inspector-toggle').setAttribute('aria-expanded',String(inspectorOpen));
     $('panel-scrim').hidden=!narrow||app.panel===null;
   }
   function closePanel({restore=true}={}){
@@ -162,7 +309,7 @@
     const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
     return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
   }
-  function mountSvg(text){
+  function mountSvg(text,{interactive=true}={}){
     app.fidelityLosses=[];
     const doc=new DOMParser().parseFromString(text,'image/svg+xml');
     if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw new Error('Malformed SVG preview');
@@ -178,6 +325,11 @@
     $('overlay').setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
     app.basis=null;app.nodeRects=new Map();app.edgePoints=new Map();app.labelRects=new Map();app.locked=new Set();
     $('empty').hidden=true;
+    if(!interactive){
+      app.markers=new Map();
+      if(app.first){fit();app.first=false;}else paintTransform();
+      return;
+    }
     if(!graphGestures()){
       if(app.first){fit();app.first=false;}else paintTransform();
       return;
@@ -216,8 +368,8 @@
     if(app.first){fit();app.first=false;}else paintTransform();
     $('empty').hidden=true;
   }
-  function nodeEditable(n){return n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
-  function vertexEditable(e,j){const v=e.vertices[j];return e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
+  function nodeEditable(n){return structuralEdits()&&n.editable&&!!app.basis&&!app.locked.has(n.id)&&!app.busy;}
+  function vertexEditable(e,j){const v=e.vertices[j];return structuralEdits()&&e.editable&&v?.kind==='point'&&v.point.editable&&!app.locked.has(`${e.id}:${j}`)&&!!app.edgePoints.get(e.id)&&!app.busy;}
   function alignedNodePosition(drag,candidate,event,lock={x:false,y:false}){
     if(!snapping(event))return {position:candidate,guides:[]};
     const originalSvg=worldToSvg(drag.node.position),candidateSvg=worldToSvg(candidate);
@@ -262,7 +414,12 @@
     drawAlignmentGuides(overlay,feedback.guides,feedback.moved);
     overlay.append(el('rect',{x:feedback.box.x,y:feedback.box.y,width:feedback.box.w,height:feedback.box.h,rx:3,class:'drag-ghost'}));
   }
-  function select(kind,id){app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();}
+  function select(kind,id){
+    disposeTextPreviews();
+    cancelPreview();
+    if(kind!=='parameter'||id!==app.focusedParameter)app.focusedParameter=null;
+    app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();
+  }
   function startDrag(e,kind,payload){
     if(app.busy||e.button!==0||!app.basis)return;
     e.preventDefault();e.stopPropagation();
@@ -270,7 +427,7 @@
     $('viewport').setPointerCapture(e.pointerId);
   }
   function drawOverlay(){
-    const overlay=$('overlay');overlay.replaceChildren();if(!app.snapshot||!app.basis)return;
+    const overlay=$('overlay');overlay.replaceChildren();if(!app.snapshot||!app.basis||app.previewVisible)return;
     const d=diagram(),z=app.zoom;
     for(const e of d.edges){
       const points=app.edgePoints.get(e.id);if(!points)continue;
@@ -382,9 +539,12 @@
   function renderParameter(root, item){
     root.append(html('div','selection-type','DECLARED CONTROL'),html('h2','selection-name',item.label||item.id),html('div','source-line',`Source line ${item.line} · ${item.id}`));
     parameterEditor=CetzUi.createParameterEditor(root,item,{
-      disabled:app.busy||!app.snapshot.preview_current,
-      apply:value=>post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}}),
+      disabled:app.busy||!app.previewReady||!app.snapshot.preview_current,
+      identity:{sessionId:app.sessionId,objectId:item.id},
+      preview:(value,transaction)=>preview({kind:'set_parameter',id:item.id,value},transaction),
+      apply:async(value)=>{await cancelPreview();return post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}});},
     });
+    root.querySelector('#parameter-value')?.addEventListener('focus',()=>{app.focusedParameter=item.id;});
     root.append(html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
   function renderTextFields(root,item,kind){
@@ -393,11 +553,18 @@
     for(const field of fields){
       const wrap=html('div','text-field'),label=html('label',null,field.id[0].toUpperCase()+field.id.slice(1)),input=html('textarea');
       const source=html('textarea','typst-editor'),applySource=html('button','fullwidth','Apply Typst');
+      const sourcePreview={timer:null,transaction:`${kind}:${item.id}:${field.id}:${Date.now()}`,input:source,
+        sessionId:app.sessionId,revision:app.snapshot?.revision,kind,objectId:item.id,disposed:false};
+      textPreviews.add(sourcePreview);
       source.id=`${kind}-${field.id}-source`;source.value=field.source??'';source.spellcheck=false;
       source.setAttribute('aria-label',`${label.textContent} Typst content`);
       source.disabled=app.busy||!field.source_editable||!structuralEdits();
+      source.addEventListener('input',()=>scheduleTextPreview(
+        ()=>kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:source.value}:{kind:'set_edge_source',edge:item.id,field:field.id,source:source.value},
+        source.value,sourcePreview.transaction,sourcePreview));
       applySource.id=`apply-${kind}-${field.id}-source`;applySource.disabled=source.disabled;
       applySource.onclick=async()=>{
+        clearTimeout(sourcePreview.timer);sourcePreview.timer=null;
         const draft=source.value;
         const command=kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:draft}:{kind:'set_edge_source',edge:item.id,field:field.id,source:draft};
         const result=await post('/api/edit',{command});
@@ -418,13 +585,21 @@
     }
   }
   function renderInspector(){
-    parameterEditor?.dispose();parameterEditor=null;
-    const root=$('inspector');root.replaceChildren();const sel=app.selection,d=diagram();
+    disposeTextPreviews();
+    const root=$('inspector');const sel=app.selection,d=diagram();
     if(sel?.kind==='parameter'){
       const item=parameters().find(p=>p.id===sel.id);
-      if(item){renderParameter(root,item);return;}
+      if(item){
+        if(parameterEditor?.matches(item.id)){
+          parameterEditor.update(item,app.busy||!app.snapshot.preview_current,{sessionId:app.sessionId,objectId:item.id});
+          if(app.focusedParameter===item.id&&!app.busy)queueMicrotask(()=>root.querySelector('#parameter-value')?.focus());
+          return;
+        }
+        parameterEditor?.dispose();parameterEditor=null;root.replaceChildren();renderParameter(root,item);return;
+      }
       app.selection=null;
     }
+    parameterEditor?.dispose();parameterEditor=null;root.replaceChildren();
     if(!app.selection){root.append(html('div','inspector-hint',graphGestures()?'Select a node or connection to edit supported layout properties. Controls exposes declared layout and style parameters.':'This figure is rendered by Typst. Select a declared control to edit its value; undeclared or computed properties remain source-owned.'));return;}
     const item=(sel.kind==='node'?d.nodes:d.edges).find(n=>n.id===sel.id);if(!item){app.selection=null;renderInspector();return;}
     root.append(html('div','selection-type',sel.kind==='node'?'NODE':'CONNECTION'),html('h2','selection-name',sel.kind==='node'?item.id:item.id.toUpperCase()),html('div','source-line',`Source line ${item.line} · ${sel.kind==='node'?item.kind:'Fletcher edge'}`));
@@ -554,14 +729,12 @@
         app.mountedSvg=svg;app.mountedGestures=gestures;
       }
     }else{app.mountedSvg=null;app.basis=null;app.fidelityLosses=[];$('paper').style.display='none';$('empty').hidden=false;}
-    const fidelityWarning=app.fidelityLosses.length>0;
-    $('preview-status').textContent=app.fixture?(fidelityWarning?'UI fixture · fidelity warning':'UI fixture'):(svg?(fidelityWarning?'Typst preview · fidelity warning':app.basis?'Editable Typst preview':parameters().length?'Typst preview · controls':'Typst preview · view only'):'Preview unavailable');
+    renderPreviewStatus();
     $('canvas-hint').textContent=app.basis?'Drag a node · Select an edge for routes · Space + drag to pan':'Use Controls for declared parameters · Scroll to zoom · Drag to pan';
     $('undo').disabled=app.busy||!snapshot.undo;$('redo').disabled=app.busy||!snapshot.redo;
     $('save').disabled=app.fixture||app.busy||!snapshot.dirty||!snapshot.preview_current||!!app.mappingError;
     $('render').disabled=app.busy;$('download').disabled=!snapshot.source;
-    const warnings=[...(snapshot.warnings||diagram().warnings)];if(app.mappingError)warnings.push(app.mappingError);if(app.fidelityLosses.length)warnings.push(...app.fidelityLosses.map(loss=>`Preview fidelity warning: ${loss.count} ${loss.kind}${loss.count===1?' was':'s were'} ${loss.reason}.`));if(app.locked.size)warnings.push(`${app.locked.size} handle(s) locked after source/preview coordinate checks.`);
-    $('warning-count').textContent=warnings.length+(snapshot.diagnostics?1:0);$('diagnostics').textContent=[...warnings,snapshot.diagnostics].filter(Boolean).join('\n\n')||'No compiler diagnostics.';
+    updatePreviewDiagnostics();
     $('diff').replaceChildren();const lines=snapshot.diff?snapshot.diff.split('\n'):['No changes. The original source is untouched.'];
     for(const line of lines){const cls=line.startsWith('@@')?'hunk':line.startsWith('+')&&!line.startsWith('+++')?'add':line.startsWith('-')&&!line.startsWith('---')?'remove':null;$('diff').append(html('span',cls,`${line}\n`));}
     $('diff-count').textContent=lines.filter(l=>/^[+-](?![+-])/.test(l)).length;renderProject();renderList();renderInspector();routing?.refresh();drawOverlay();
@@ -569,6 +742,7 @@
   }
   async function post(path,body={},options={}){
     if(app.busy)return;
+    if(['/api/edit','/api/undo','/api/redo','/api/render','/api/save'].includes(path)||path.startsWith('/api/project/'))await cancelPreview();
     app.busy=true;$('busy-overlay').hidden=false;refresh(app.snapshot);
     try{
       const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Cetz-Studio-Token':app.token},body:JSON.stringify({session_id:app.sessionId,revision:app.snapshot.revision,...body})});
@@ -624,7 +798,7 @@
   $('search').addEventListener('input',renderList);
   function showList(kind){app.list=kind;for(const tab of ['nodes','edges','parameters'])$(`${tab}-tab`).classList.toggle('active',kind===tab);renderList();}
   for(const kind of ['nodes','edges','parameters'])$(`${kind}-tab`).onclick=()=>showList(kind);
-  $('page-select').onchange=()=>{app.page=Number($('page-select').value);app.first=true;refresh(app.snapshot);};
+  $('page-select').onchange=()=>{disposeTextPreviews();cancelPreview();app.page=Number($('page-select').value);app.first=true;refresh(app.snapshot);};
   for(const tab of ['diff','diagnostics'])$(`${tab}-tab`).onclick=()=>{$('diff').hidden=tab!=='diff';$('diagnostics').hidden=tab!=='diagnostics';$('diff-tab').classList.toggle('active',tab==='diff');$('diagnostics-tab').classList.toggle('active',tab==='diagnostics');};
   $('download').onclick=()=>{if(!app.snapshot)return;const u=URL.createObjectURL(new Blob([app.snapshot.source],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=app.snapshot.filename.replace(/\.typ$/,'.draft.typ');a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);};
   document.addEventListener('keydown',e=>{
@@ -646,7 +820,11 @@
   window.addEventListener('beforeunload',e=>{if(app.snapshot?.dirty&&!app.fixture){e.preventDefault();e.returnValue='';}});
   new ResizeObserver(()=>{if(app.svg&&!app.drag)fit();}).observe($('viewport'));
   if(app.fixture){$('fixture-banner').hidden=false;$('session-mode').textContent='BROWSER-TESTED UI FIXTURE';}
-  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(data=>{app.token=data.token;applyEnvelope(data);if(!graphGestures()&&parameters().length)showList('parameters');notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');}).catch(e=>notify(e.message,true));
+  fetch('/api/state').then(r=>{if(!r.ok)throw new Error('Cannot open session');return r.json();}).then(async data=>{
+    app.token=data.token;app.sessionId=data.session_id;await resetPreviewClient(data);applyEnvelope(data);
+    if(!graphGestures()&&parameters().length)showList('parameters');
+    notify(app.fixture?'Interactive fixture loaded. Native rendering is not exercised in this fixture.':'Source opened. Only explicit Save writes to disk.');
+  }).catch(e=>notify(e.message,true));
   // Read-only observation seam for the browser smoke test; never accepts edits.
-  window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy});
+  window.cetzStudioDebug=()=>({revision:app.snapshot?.revision,basis:app.basis,locked:[...app.locked],selection:app.selection,busy:app.busy,previewReady:app.previewReady,previewVisible:app.previewVisible,preview:{state:app.preview.state,generation:app.preview.generation,identity:app.preview.identity}});
 })();

@@ -32,6 +32,9 @@ jobs:
       - name: Build local frontend dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
 
+      - name: Build synthetic browser fixture
+        run: python scripts/build_ui_preview.py
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -122,6 +125,15 @@ jobs:
         run: |
           python -m pip install playwright==1.63.0
           python -m playwright install --with-deps chromium
+
+      - name: Verify browser production and tentative-preview contracts
+        run: |
+          python tests/svg_browser.py
+          python tests/browser_smoke.py
+          python tests/controls_browser.py
+          python tests/preview_frontend_browser.py
+          python tests/responsive_browser.py
+          python tests/transparency_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"
 
       - name: Verify native browser round trips
         run: python tests/native_browser.py --binary "${{ runner.temp }}/cetz-studio-target/debug/cetz-studio"

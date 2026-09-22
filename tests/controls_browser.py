@@ -32,7 +32,7 @@ def main() -> None:
                   window.control?.dispose();
                   window.applied = [];
                   window.control = CetzUi.createParameterEditor(
-                    document.getElementById('controls'), item, {disabled:!!item.disabled,apply:v=>window.applied.push(v)});
+                    document.getElementById('controls'), item, {disabled:!!item.disabled,identity:{sessionId:item.sessionId||'session-a',objectId:item.id},apply:v=>window.applied.push(v)});
                 }''', {'id': 'fixture', 'kind': kind, 'value': value, **metadata})
 
             def value() -> object:
@@ -48,10 +48,21 @@ def main() -> None:
             enter('0.125')
             check(page.evaluate('window.applied.length') == 1, 'Typing alone never applies a source command')
             check(value() == 0.125, 'Unstepped numeric input is not rounded to an invented step')
+            mount('number', 2)
+            enter('3')
+            page.evaluate("window.control.update({id:'fixture',kind:'number',value:9},false,{sessionId:'session-a',objectId:'fixture'})")
+            check(page.locator('#parameter-value').input_value() == '3', 'Same-session snapshot refresh retains the focused widget staging')
+            check(value() == 3, 'Retained staging applies as one focused-widget transaction')
+            mount('number', 2)
+            enter('3')
+            page.evaluate("window.control.update({id:'fixture',kind:'number',value:9},false,{sessionId:'session-b',objectId:'fixture'})")
+            check(page.locator('#parameter-value').input_value() == '9', 'A new session resets stale focused-widget staging')
+            check(value() == 9, 'New-session widget applies the refreshed object value')
             mount('number', 0.75, min=0.25, max=2.25, step=0.5)
             enter('1.75')
             check(value() == 1.75, 'Step respects an aligned nonzero range origin')
             mount('number', 0.3, min=0, max=2, step=0.5)
+            check(value() == 0.3, 'Untouched off-grid source value is not snapped on Apply')
             enter('0.5')
             check(value() == 0.5, 'Widget does not shift the source step origin to the initial value')
             mount('length', 20, min=5, max=50, step=1, unit='mm')
@@ -74,7 +85,12 @@ def main() -> None:
                     staged = float(page.locator('#parameter-value').input_value())
                     check(minimum <= staged <= maximum and abs((staged-minimum)/step-round((staged-minimum)/step)) <= 1e-7,
                           f'Pointer-staged value follows bounds/step {minimum}/{maximum}/{step}')
-                    check(value() == staged, 'Apply emits exactly the displayed step-aligned value')
+                    emitted = value()
+                    check(emitted == staged,
+                          'Apply emits the displayed step-aligned value')
+                    if fraction == 1.0:
+                        check(value() == staged,
+                              'Repeated endpoint Apply retains the displayed staged value')
                     page.evaluate('window.applied = []')
             mount('bool', True)
             page.locator('label').filter(has=page.locator('#parameter-value')).click()

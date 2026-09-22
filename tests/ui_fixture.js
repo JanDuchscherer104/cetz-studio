@@ -1,6 +1,6 @@
 /* Test-only API fixture. This is NOT a Rust parser, a Typst compiler, or a save
  * implementation. It records UI commands and moves synthetic SVG geometry. */
-window.CETZ_STUDIO_FIXTURE = true;
+window.CETZ_STUDIO_FIXTURE = !window.CETZ_STUDIO_PREVIEW_TEST;
 (() => {
   const clone=x=>JSON.parse(JSON.stringify(x));
   const names=[['physical',20,12,'Physical inputs','poses · scene statistics'],['target',71,12,'Target relation','candidate-to-target pose'],['state',124,12,'Shared state','scene · target · history'],['trunk',20,40,'Physical trunk','Linear · GELU · norm'],['query',71,40,'Value embedding','uᵢ ∈ ℝᵈ'],['tokens',124,40,'State encoders','Z ∈ ℝ⁵ˣᵈ'],['feasibility',20,65,'Feasibility','auxiliary prediction'],['attention',95,65,'Cross-attention','independent queries'],['concat',95,90,'Concatenate','[u, c, u ⊙ c]'],['decoder',95,113,'Scalar decoder','Linear · GELU · Linear'],['value',144,113,'Conditional value','Qₕ'],['query-fork',71,55,'','']];
@@ -8,8 +8,8 @@ window.CETZ_STUDIO_FIXTURE = true;
   const point=(x,y)=>({kind:'point',point:{x,y,editable:true}});
   const specifications=[['physical','trunk'],['target','query'],['trunk','query'],['state','tokens'],['trunk','feasibility'],['query','query-fork'],['query-fork',[71,65],'attention.west'],['tokens',[124,65],'attention.east'],['query-fork',[52,55],[52,90],'concat.west'],['attention','concat'],['concat','decoder'],['decoder','value']];
   const labels=['','','','','','Nq × d','Q','K, V','uᵢ','cᵢ','Nq × 3d','Nq × 1'];
-  let state={filename:'demo.typ',revision:0,disk_hash:'UI_FIXTURE_NOT_A_DISK_HASH',source:window.CETZ_STUDIO_DEMO_SOURCE||'// UI fixture. Open examples/demo.typ with the Rust server.\n',diagram:{nodes:names.map(([id,x,y,title,body],i)=>({id,title,body,kind:id==='query-fork'?'junction':'n',position:{x,y,editable:true},editable:true,line:34+i})),edges:specifications.map((v,i)=>({id:`e${i}`,vertices:v.map(x=>Array.isArray(x)?point(...x):anchor(x)),has_label:!!labels[i],editable:true,label_position:i===8?[1,.5]:[0,.5],line:46+i})),warnings:['UI fixture only. Geometry is synthetic, not compiled from Typst.'],y_scale:1},svg:null,diagnostics:'No Rust or Typst process is running in this fixture.',diff:'',dirty:false,undo:false,redo:false,preview_current:true};
-  const history=[],future=[];window.cetzStudioFixtureRequests=[];
+  let state={filename:'demo.typ',revision:0,disk_hash:'UI_FIXTURE_NOT_A_DISK_HASH',source:window.CETZ_STUDIO_DEMO_SOURCE||'// UI fixture. Open examples/demo.typ with the Rust server.\n',parameters:[{id:'fixture-radius',label:'Fixture radius',kind:'number',value:20,min:10,max:40,step:1,unit:'mm',line:12}],diagram:{nodes:names.map(([id,x,y,title,body],i)=>({id,title,body,kind:id==='query-fork'?'junction':'n',position:{x,y,editable:true},editable:true,line:34+i,text_fields:i===0?[{id:'title',value:title,source:'Physical inputs',source_editable:true,editable:true}]:[]})),edges:specifications.map((v,i)=>({id:`e${i}`,vertices:v.map(x=>Array.isArray(x)?point(...x):anchor(x)),has_label:!!labels[i],editable:true,label_position:i===8?[1,.5]:[0,.5],line:46+i})),warnings:['UI fixture only. Geometry is synthetic, not compiled from Typst.'],y_scale:1},svg:null,diagnostics:'No Rust or Typst process is running in this fixture.',diff:'',dirty:false,undo:false,redo:false,preview_current:true};
+  const history=[],future=[];let preview=null;window.cetzStudioFixtureRequests=[];
   const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   function endpoint(v){if(v.kind==='point')return v.point;const n=state.diagram.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0];if(!n)return{x:0,y:0};const p={...n.position},port=v.name.slice(n.id.length);if(port.includes('west'))p.x-=17;if(port.includes('east'))p.x+=17;if(port.includes('north'))p.y-=6.5;if(port.includes('south'))p.y+=6.5;return p;}
   function render(){
@@ -36,8 +36,18 @@ window.CETZ_STUDIO_FIXTURE = true;
   const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
   function snapshot(){state.svg=render();state.undo=history.length>0;state.redo=future.length>0;return clone(state);}
   window.fetch=async(url,options={})=>{
-    if(url==='/api/state')return response({token:'ui-fixture',snapshot:snapshot()});
+    if(url==='/api/state')return response({token:'ui-fixture',session_id:11,snapshot:snapshot()});
     const body=JSON.parse(options.body||'{}');window.cetzStudioFixtureRequests.push({url,body});
+    if(url==='/api/preview/reset'){preview=null;return response({preview:{state:'idle',identity:null,svg:null,pages:[],diagnostics:null}});}
+    if(url==='/api/preview'){
+      preview={state:'current',identity:{session_id:11,base_revision:state.revision,request_generation:body.generation,client_id:body.client_id,transaction_id:null},svg:snapshot().svg.replaceAll('#d8eadd','#ffb000'),pages:[],diagnostics:null};
+      return response({preview});
+    }
+    if(url==='/api/preview/status')return response({preview:preview||{state:'idle',identity:null,svg:null,pages:[],diagnostics:null}});
+    if(url==='/api/preview/cancel'){
+      if(preview)preview={...preview,state:'cancelled',svg:null,pages:[]};
+      return response({preview:preview||{state:'cancelled',identity:null,svg:null,pages:[],diagnostics:null}});
+    }
     if(window.CETZ_STUDIO_TEST_FAIL_NEXT){window.CETZ_STUDIO_TEST_FAIL_NEXT=false;return response({error:'Injected compiler failure · UI test fixture',snapshot:snapshot()},409);}
     if(url==='/api/save')return response({error:'Saving is disabled in the UI fixture.',snapshot:snapshot()},409);
     if(body.revision!==state.revision)return response({error:'Stale fixture revision',snapshot:snapshot()},409);
@@ -48,6 +58,7 @@ window.CETZ_STUDIO_FIXTURE = true;
       if(c.kind==='move_segment'){const e=state.diagram.edges.find(e=>e.id===c.edge),a=e.vertices[c.segment].point,b=e.vertices[c.segment+1].point,axis=Math.abs(a.x-b.x)<1e-6?'x':'y';a[axis]+=c.delta;b[axis]+=c.delta;}
       if(c.kind==='set_label')state.diagram.edges.find(e=>e.id===c.edge).label_position=[c.segment,c.fraction];
       if(c.kind==='set_port'){const e=state.diagram.edges.find(e=>e.id===c.edge),v=c.end==='start'?e.vertices[0]:e.vertices.at(-1),n=state.diagram.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0];v.name=n.id+(c.port==='auto'?'':`.${c.port}`);}
+      if(c.kind==='set_parameter'){const parameter=state.parameters.find(p=>p.id===c.id);if(parameter)parameter.value=c.value;}
       state.revision++;state.dirty=true;state.diff='@@ UI command log: NOT a Typst source diff @@\n+ '+JSON.stringify(c)+'\n';
     }else if(url==='/api/undo'&&history.length){const rev=state.revision;future.push(clone(state));state=history.pop();state.revision=rev+1;}
     else if(url==='/api/redo'&&future.length){const rev=state.revision;history.push(clone(state));state=future.pop();state.revision=rev+1;}
