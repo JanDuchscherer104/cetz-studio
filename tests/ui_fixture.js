@@ -13,8 +13,9 @@ window.CETZ_STUDIO_FIXTURE = true;
   const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   function endpoint(v){if(v.kind==='point')return v.point;const n=state.diagram.nodes.filter(n=>v.name===n.id||v.name.startsWith(`${n.id}.`)).sort((a,b)=>b.id.length-a.id.length)[0];if(!n)return{x:0,y:0};const p={...n.position},port=v.name.slice(n.id.length);if(port.includes('west'))p.x-=17;if(port.includes('east'))p.x+=17;if(port.includes('north'))p.y-=6.5;if(port.includes('south'))p.y+=6.5;return p;}
   function render(){
+    if(window.CETZ_STUDIO_FIXTURE_SVG)return window.CETZ_STUDIO_FIXTURE_SVG;
     const S=72/25.4;
-    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520pt" height="405pt" viewBox="0 0 520 405"><path class="typst-shape" fill="#ffffff" d="M 0 0v 405 h 520 v -405 Z"/><text x="260" y="24" text-anchor="middle" fill="#26374b" font-family="Georgia,serif" font-weight="bold" font-size="13">Candidate scoring · layout fixture</text><g transform="translate(24 45) scale(${S})">`;
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520pt" height="405pt" viewBox="0 0 520 405"><path fill="#ffffff" d="M 0 0v 405 h 520 v -405 Z"/><text x="260" y="24" text-anchor="middle" fill="#26374b" font-family="Georgia,serif" font-weight="bold" font-size="13">Candidate scoring · layout fixture</text><g transform="translate(24 45) scale(${S})">`;
     const rect=(x,y,w,h,color)=>`<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" stroke="#${color}" stroke-width="0.00012345" fill="none"/>`;
     svg+=rect(0,0,.02,.02,'a00000')+rect(10,0,.02,.02,'a00001')+rect(0,10,.02,.02,'a00002');
     for(const [i,e] of state.diagram.edges.entries()){

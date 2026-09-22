@@ -1,6 +1,6 @@
 {
   "scope": "Production browser code with synthetic API/geometry fixture; Rust and Typst NOT executed",
-  "passed": 34,
+  "passed": 36,
   "checks": [
     "Preview visibly identifies itself as an API/geometry fixture",
     "Fixture cannot save source",
@@ -35,6 +35,8 @@
     "Zoom controls update the canvas scale",
     "Space-drag pans even when starting over a node",
     "Save stays disabled after all fixture edits",
+    "Blocked visual resource produces count-only fidelity diagnostics",
+    "Clean subsequent preview clears the fidelity warning",
     "No browser JavaScript exceptions"
   ],
   "browser_errors": []

@@ -16,11 +16,15 @@ The synthetic UI builder embeds this same bundle and remains synthetic evidence.
 
 DOMPurify owns the SVG sanitization algorithm, including the root element.
 Studio adds a resource policy: same-document fragment references and base64
-PNG/JPEG/GIF/WebP images only. External URLs, nested SVG data images, inline CSS,
-foreign content, animation and base-URI rebinding are not permitted. Typst glyph
-`use` elements, local definitions/clipping and measurement-marker attributes
-are retained. Unsupported sanitization fails closed rather than falling back to
-our old filter. This does not turn Typst into an untrusted-document sandbox.
+PNG/JPEG/GIF/WebP images are retained. A compiler-emitted base64 SVG image is
+accepted only after UTF-8 decoding, SVG parsing and a second DOMPurify pass. Its
+sanitized payload is re-encoded, is limited to 1 MiB and may contain no further
+SVG data image. External URLs, deeper SVG images, inline CSS, foreign content,
+animation and base-URI rebinding are not permitted. Typst glyph `use` elements,
+local definitions/clipping and measurement-marker attributes are retained.
+Unsupported material images or paint resources fail closed and add a count-only
+fidelity warning to preview status and Diagnostics; it never includes source or
+encoded payloads. This does not turn Typst into an untrusted-document sandbox.
 
 ## Verification and updates
 
