@@ -277,10 +277,10 @@ def prepare_project(root: Path) -> dict[str, Path]:
     )
     inset = examples / "inset.svg"
     inset.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20">'
-        '<rect width="40" height="20" fill="#f60"/>'
-        '<circle cx="30" cy="10" r="6" fill="#1683d8"/>'
-        '</svg>\n',
+        '<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" viewBox="0 0 40 20">'
+        '<ns0:rect width="40" height="20" fill="#f60"/>'
+        '<ns0:circle cx="30" cy="10" r="6" fill="#1683d8"/>'
+        '</ns0:svg>\n',
         encoding="utf-8",
     )
     svg_inset = examples / "svg-inset.typ"

@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG namespace regression</title>
+<pre id="result">Running namespace checks</pre>
+<script src="../web/dist/ui.js"></script>
+<script>
+(() => {
+  const SVG = 'http://www.w3.org/2000/svg';
+  const parse = text => new DOMParser().parseFromString(text, 'image/svg+xml').documentElement;
+  const checked = [];
+  const check = (ok, name) => { if (!ok) throw new Error(name); checked.push(name); };
+  const source = '<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" xmlns:ns1="http://www.w3.org/1999/xlink" viewBox="0 0 20 10" onload="alert(1)"><ns0:defs><ns0:path id="shape" d="M0 0h10v10z"/></ns0:defs><ns0:use ns1:href="#shape" fill="#ff7700"/><ns0:script>alert(1)</ns0:script><ns0:image ns1:href="https://example.invalid/image.png"/><ns0:foreignObject><div xmlns="http://www.w3.org/1999/xhtml">unsafe</div></ns0:foreignObject></ns0:svg>';
+  try {
+    const root = parse(source);
+    checked.push(`input nodeName=${root.nodeName}, localName=${root.localName}, namespace=${root.namespaceURI}`);
+    const result = CetzUi.sanitizeSvg(root);
+    check(result.svg.nodeName === 'svg' && result.svg.namespaceURI === SVG, 'qualified SVG root normalized');
+    check(result.svg.querySelector('use')?.getAttributeNS('http://www.w3.org/1999/xlink', 'href') === '#shape', 'aliased local XLink retained');
+    check(!result.svg.hasAttribute('onload') && !result.svg.querySelector('script,foreignObject'), 'qualified active content removed');
+    check(!result.svg.querySelector('image').hasAttributeNS('http://www.w3.org/1999/xlink', 'href'), 'aliased external XLink blocked');
+    const outer = parse(`<svg xmlns="${SVG}"><image href="data:image/svg+xml;base64,${btoa(source)}"/></svg>`);
+    const embedded = CetzUi.sanitizeSvg(outer);
+    const href = embedded.svg.querySelector('image').getAttribute('href');
+    check(href?.startsWith('data:image/svg+xml;base64,'), 'qualified embedded SVG survives');
+    const decoded = parse(atob(href.split(',')[1]));
+    check(decoded.querySelector('use')?.getAttribute('fill') === '#ff7700' && !decoded.querySelector('script,foreignObject'), 'embedded geometry retained and sanitized');
+    let refused = false;
+    try { CetzUi.sanitizeSvg(parse('<svg xmlns="https://example.invalid/not-svg"/>')); } catch { refused = true; }
+    check(refused, 'wrong root namespace rejected');
+    const foreign = CetzUi.sanitizeSvg(parse(`<svg xmlns="${SVG}"><evil:path xmlns:evil="https://example.invalid/not-svg" d="M0 0h10v10z"/></svg>`));
+    check(!foreign.svg.querySelector('path'), 'foreign namespace not promoted into SVG');
+    document.title = 'PASS SVG namespace regression';
+    document.getElementById('result').textContent = JSON.stringify({passed: true, checks: checked}, null, 2);
+  } catch (error) {
+    document.title = 'FAIL SVG namespace regression';
+    document.getElementById('result').textContent = JSON.stringify({passed: false, checks: checked, error: error.message}, null, 2);
+  }
+})();
+</script>

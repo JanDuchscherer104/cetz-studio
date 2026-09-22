@@ -1,6 +1,8 @@
 import createDOMPurify from 'dompurify';
 
 const SVG = 'http://www.w3.org/2000/svg';
+const XLINK = 'http://www.w3.org/1999/xlink';
+const XMLNS = 'http://www.w3.org/2000/xmlns/';
 const purifier = createDOMPurify(window);
 const localReference = /^#[A-Za-z_][A-Za-z0-9_.:-]*$/;
 const rasterData = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i;
@@ -64,8 +66,8 @@ function sanitizeEmbeddedSvg(value) {
   const previousDepth = activeContext.depth;
   activeContext.depth += 1;
   try {
-    sanitizeRoot(nested.documentElement);
-    const serialized = new XMLSerializer().serializeToString(nested.documentElement);
+    const sanitized = sanitizeRoot(nested.documentElement);
+    const serialized = new XMLSerializer().serializeToString(sanitized);
     if (new TextEncoder().encode(serialized).length > maxEmbeddedSvgBytes) {
       recordLoss('embedded SVG image', 'sanitized SVG exceeds the size limit');
       return null;
@@ -112,8 +114,36 @@ function assertSvgRoot(root) {
   }
 }
 
+// XML serializers may spell SVG tags as ns0:svg and XLink as ns1:href.
+// DOMPurify's allowlists use qualified node/attribute names, not namespace URIs.
+// Canonicalize only the known namespaces, then sanitize every copied node and
+// attribute normally. Foreign namespaces must never acquire SVG capabilities.
+function canonicalSvgNamespaces(root) {
+  const copyElement = source => {
+    const target = source.ownerDocument.createElementNS(source.namespaceURI,
+      source.namespaceURI === SVG ? source.localName : source.nodeName);
+    for (const attribute of source.attributes) {
+      // XMLSerializer regenerates declarations from the actual namespace URIs.
+      if (attribute.namespaceURI === XMLNS) continue;
+      const name = attribute.namespaceURI === XLINK ? `xlink:${attribute.localName}` : attribute.name;
+      target.setAttributeNS(attribute.namespaceURI, name, attribute.value);
+    }
+    return target;
+  };
+  const result = copyElement(root), pending = [[root, result]];
+  while (pending.length) {
+    const [source, target] = pending.pop();
+    for (const child of source.childNodes) {
+      const copy = child.nodeType === 1 ? copyElement(child) : child.cloneNode(true);
+      target.appendChild(copy);
+      if (child.nodeType === 1) pending.push([child, copy]);
+    }
+  }
+  return result;
+}
+
 function sanitizeRoot(root) {
-  return purifier.sanitize(root, {
+  return purifier.sanitize(canonicalSvgNamespaces(root), {
     IN_PLACE: true,
     USE_PROFILES: {svg: true, svgFilters: true},
     ADD_TAGS: ['use'],
