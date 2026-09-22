@@ -1,7 +1,7 @@
 import {Pane} from 'tweakpane';
 
 /** Widgets only. Rust admits values, patches source and owns history/saving. */
-export function createParameterEditor(root, item, {disabled, preview, apply}) {
+export function createParameterEditor(root, item, {disabled, preview, apply, identity = {}}) {
   if (!['number', 'length', 'bool', 'color'].includes(item.kind)) {
     throw new Error(`Unsupported declared control: ${item.kind}`);
   }
@@ -11,6 +11,7 @@ export function createParameterEditor(root, item, {disabled, preview, apply}) {
   let transaction = null;
   let timer = null;
   let sequence = 0;
+  let owner = {sessionId: identity.sessionId ?? null, objectId: identity.objectId ?? item.id};
   const pane = new Pane({container: root});
   pane.element.id = 'parameter-pane';
   // Use upstream theme properties; do not let the host's dark button-hover
@@ -89,13 +90,22 @@ export function createParameterEditor(root, item, {disabled, preview, apply}) {
   root.append(note);
   return {
     matches(id) { return current.id === id; },
-    update(next, nextDisabled) {
+    update(next, nextDisabled, nextIdentity = owner) {
+      const nextOwner = {sessionId: nextIdentity.sessionId ?? null, objectId: nextIdentity.objectId ?? next.id};
+      const ownerChanged = owner.sessionId !== nextOwner.sessionId || owner.objectId !== nextOwner.objectId;
       current = next;
       pane.disabled = nextDisabled;
-      if (!changed && !same(values.value, next.value)) {
+      if (ownerChanged) {
+        cancelTimer();
+        changed = false;
+        transaction = null;
+        values.value = next.value;
+        binding.refresh();
+      } else if (!changed && !same(values.value, next.value)) {
         values.value = next.value;
         binding.refresh();
       }
+      owner = nextOwner;
     },
     dispose() { cancelTimer(); pane.dispose(); note.remove(); },
   };

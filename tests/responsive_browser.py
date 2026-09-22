@@ -51,8 +51,14 @@ def main() -> None:
                             toggle.click()
                             panel = page.locator("#inspector-panel" if name == "inspector" else "#project-panel")
                             check(panel.is_visible(), f"{width}px opens the {name} drawer")
+                            check(not panel.evaluate("node => node.inert"), f"{width}px makes the {name} drawer interactive")
+                            check(panel.get_attribute("aria-hidden") == "false", f"{width}px exposes the {name} drawer to assistive technology")
                             check(toggle.get_attribute("aria-expanded") == "true", f"{width}px marks {name} expanded")
-                            check(panel.get_attribute("aria-hidden") == "false", f"{width}px keeps the {name} drawer interactive")
+                            if name == "project":
+                                page.locator("#project-filter").fill("demo")
+                            elif name == "elements":
+                                page.locator("#nodes-tab").click()
+                                check(page.locator("#elements .element").count() > 0, f"{width}px Elements drawer accepts a real tab interaction")
                             page.keyboard.press("Escape")
                             check(page.locator(selector).evaluate("node => document.activeElement === node"), f"{width}px restores focus to {name} toggle")
                         for selector in ("#project-root", "#project-filter", "#check-project", "#nodes-tab", "#edges-tab", "#parameters-tab"):
