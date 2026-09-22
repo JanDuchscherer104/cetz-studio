@@ -32,7 +32,7 @@
   }
   function previewStatusText(){
     const state=app.preview.state;
-    if(app.fixture)return 'UI fixture';
+    if(app.fixture)return app.fidelityLosses.length?'UI fixture · fidelity warning':'UI fixture';
     if(state==='queued')return 'Preview queued · showing last valid';
     if(state==='running')return 'Preview running · showing last valid';
     if(state==='current')return 'Preview ready · Apply to adopt';
