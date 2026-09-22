@@ -52,6 +52,7 @@ def main() -> None:
                             panel = page.locator("#inspector-panel" if name == "inspector" else "#project-panel")
                             check(panel.is_visible(), f"{width}px opens the {name} drawer")
                             check(toggle.get_attribute("aria-expanded") == "true", f"{width}px marks {name} expanded")
+                            check(panel.get_attribute("aria-hidden") == "false", f"{width}px keeps the {name} drawer interactive")
                             page.keyboard.press("Escape")
                             check(page.locator(selector).evaluate("node => document.activeElement === node"), f"{width}px restores focus to {name} toggle")
                         for selector in ("#project-root", "#project-filter", "#check-project", "#nodes-tab", "#edges-tab", "#parameters-tab"):

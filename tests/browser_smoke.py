@@ -159,11 +159,12 @@ def main() -> None:
         check(page.locator("#save").is_disabled(), "Save stays disabled after all fixture edits")
         blocked_svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><image href="https://example.invalid/pixel.png" width="20" height="10"/></svg>'
         preview = (ROOT / "ui-preview.html").read_text(encoding="utf-8")
-        preview = preview.replace("window.CETZ_STUDIO_DEMO_SOURCE=", f"window.CETZ_STUDIO_FIXTURE_SVG={json.dumps(blocked_svg)};\\nwindow.CETZ_STUDIO_DEMO_SOURCE=", 1)
+        preview = preview.replace("window.CETZ_STUDIO_DEMO_SOURCE=", f"window.CETZ_STUDIO_FIXTURE_SVG={json.dumps(blocked_svg)};\nwindow.CETZ_STUDIO_DEMO_SOURCE=", 1)
         page.set_content(preview, wait_until="load")
         page.wait_for_function("window.cetzStudioDebug && document.querySelector('#preview-status').textContent.includes('fidelity warning')")
         diagnostics = page.locator("#diagnostics").text_content()
         check("Preview fidelity warning:" in diagnostics and "example.invalid" not in diagnostics and "data:image" not in diagnostics, "Blocked visual resource produces count-only fidelity diagnostics")
+        page.evaluate("delete window.CETZ_STUDIO_FIXTURE_SVG")
         page.set_content((ROOT / "ui-preview.html").read_text(encoding="utf-8"), wait_until="load")
         page.wait_for_function("window.cetzStudioDebug && document.querySelector('#preview-status').textContent === 'UI fixture'")
         check("fidelity warning" not in page.locator("#preview-status").text_content().lower(), "Clean subsequent preview clears the fidelity warning")

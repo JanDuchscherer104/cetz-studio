@@ -106,19 +106,16 @@
   }
   function narrowPanels(){return window.matchMedia('(max-width: 1000px)').matches;}
   function syncPanels(){
-    const panels=[
-      ['project',$('project-panel'),$('project-toggle')],
-      ['elements',$('project-panel'),$('elements-toggle')],
-      ['inspector',$('inspector-panel'),$('inspector-toggle')]
-    ];
     const narrow=narrowPanels();
     if(!narrow)app.panel=null;
-    for(const [name,panel,toggle] of panels){
-      const open=narrow&&app.panel===name;
+    const projectOpen=narrow&&(app.panel==='project'||app.panel==='elements');
+    const inspectorOpen=narrow&&app.panel==='inspector';
+    for(const [name,toggle] of [['project',$('project-toggle')],['elements',$('elements-toggle')],['inspector',$('inspector-toggle')]])
+      toggle.setAttribute('aria-expanded',String(narrow&&app.panel===name));
+    for(const [panel,open] of [[$('project-panel'),projectOpen],[$('inspector-panel'),inspectorOpen]]){
       panel.classList.toggle('panel-open',open);
       panel.inert=narrow&&!open;
       panel.setAttribute('aria-hidden',String(narrow&&!open));
-      toggle.setAttribute('aria-expanded',String(open));
     }
     $('panel-scrim').hidden=!narrow||app.panel===null;
   }
