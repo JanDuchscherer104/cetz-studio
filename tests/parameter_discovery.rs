@@ -64,16 +64,21 @@ fn signed_literals_work_and_duplicate_names_do_not() {
 #[test]
 fn no_op_preserves_spelling_and_exponents_are_numbers() {
     let source =
-        format!("{PREFIX}#let opacity = studio.param(1.000)\n#let scale = studio.param(1e3)");
+        format!("{PREFIX}#let opacity = studio.param(1.000)\n#let scale = studio.param(1e3)\n#let count = studio.param(0x10)");
     let parsed = parse(&source);
     assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
     assert_eq!(parsed.parameters[1].value, Value::from(1000.0));
+    assert_eq!(parsed.parameters[2].value, Value::from(16.0));
     assert_eq!(
         apply(&source, &parsed.parameters, "opacity", &Value::from(1.0)).unwrap(),
         source
     );
     assert_eq!(
         apply(&source, &parsed.parameters, "scale", &Value::from(1000)).unwrap(),
+        source
+    );
+    assert_eq!(
+        apply(&source, &parsed.parameters, "count", &Value::from(16)).unwrap(),
         source
     );
 }

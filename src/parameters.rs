@@ -157,23 +157,38 @@ fn literal(source: &Source, expr: ast::Expr<'_>) -> Result<Parameter> {
 }
 
 /// Decode units and magnitudes through Typst, not a parallel number lexer.
+fn exact_json_integer(text: &str) -> Result<f64> {
+    let (digits, radix) = if let Some(digits) = text.strip_prefix("0x") {
+        (digits, 16)
+    } else if let Some(digits) = text.strip_prefix("0o") {
+        (digits, 8)
+    } else if let Some(digits) = text.strip_prefix("0b") {
+        (digits, 2)
+    } else {
+        (text, 10)
+    };
+    let value = i64::from_str_radix(digits, radix)
+        .context("Integer literal is outside the supported range")?;
+    ensure!(
+        value.unsigned_abs() <= (1u64 << 53),
+        "Integer is outside exact JSON numeric control range"
+    );
+    Ok(value as f64)
+}
+
 fn numeric(expr: ast::Expr<'_>) -> Result<(f64, Option<&'static str>)> {
     match expr {
-        ast::Expr::Int(value) => {
-            // The AST getter falls back to zero on overflow. Do not expose that
-            // fallback as a real authored value.
-            let value: i64 = value
-                .to_untyped()
-                .text()
-                .parse()
-                .context("Integer literal is outside the supported range")?;
-            ensure!(
-                value.unsigned_abs() <= (1u64 << 53),
-                "Integer is outside exact JSON numeric control range"
-            );
-            Ok((value as f64, None))
+        // Typst promotes an overflowing decimal integer token to a float. Keep
+        // its source spelling so that promotion cannot bypass the JSON-safe
+        // integer limit exposed by Studio's numeric control protocol.
+        ast::Expr::Int(value) => Ok((exact_json_integer(value.to_untyped().text())?, None)),
+        ast::Expr::Float(value) => {
+            let text = value.to_untyped().text();
+            if !text.contains(['.', 'e', 'E']) {
+                return Ok((exact_json_integer(text)?, None));
+            }
+            Ok((value.get(), None))
         }
-        ast::Expr::Float(value) => Ok((value.get(), None)),
         ast::Expr::Numeric(value) => {
             let (value, unit) = value.get();
             let unit = match unit {

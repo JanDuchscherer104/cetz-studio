@@ -122,7 +122,7 @@ fn native_library_controls_round_trip() {
             .origin
             .as_ref()
             .is_some_and(|origin| origin.argument == argument)
-            && p.value == Value::from(value)));
+            && p.value.as_f64() == Some(value)));
         assert_eq!(
             fs::read(temporary.path().join("tetra.obj")).unwrap(),
             fs::read(fixtures.join("tetra.obj")).unwrap()

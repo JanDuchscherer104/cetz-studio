@@ -563,7 +563,10 @@ fn inferred(
                 "Original value is outside the supported display range"
             );
             let argument = format!("{}{index}", rule.argument);
-            parameter.id = format!("library:{}:{}:{argument}", parameter.span.start, symbol.path);
+            parameter.id = format!(
+                "library:{}:{}:{argument}",
+                parameter.span.start, symbol.path
+            );
             parameter.label = format!(
                 "{} · {argument} · line {}{}",
                 symbol.path,
