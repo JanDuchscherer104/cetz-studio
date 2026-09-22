@@ -65,6 +65,10 @@ def main() -> None:
           check(refused, 'non-SVG root rejected');
           return checks;
         }""")
+        page.goto((ROOT / 'tests/svg_namespace_browser.html').as_uri())
+        namespace_results = json.loads(page.locator('#result').inner_text())
+        assert namespace_results['passed'], namespace_results
+        results.extend(namespace_results['checks'])
         browser.close()
     print(json.dumps({"passed": len(results), "checks": results}, indent=2))
 

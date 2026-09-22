@@ -14,6 +14,13 @@ The synthetic UI builder embeds this same bundle and remains synthetic evidence.
 
 ## SVG policy
 
+Compiler SVGs can contain namespace-qualified tags such as `ns0:svg` and
+aliased XLink attributes such as `ns1:href`. The adapter normalizes the SVG
+and XLink namespace spellings on a detached copy before DOMPurify's ordinary
+allowlist checks, including inside embedded SVG images. Foreign namespaces
+are preserved for rejection, never reinterpreted as SVG. Consumers mount the
+returned sanitized root rather than the unsanitized input.
+
 DOMPurify owns the SVG sanitization algorithm, including the root element.
 Studio adds a resource policy: same-document fragment references and base64
 PNG/JPEG/GIF/WebP images are retained. A compiler-emitted base64 SVG image is
