@@ -120,6 +120,7 @@ def main() -> None:
         page.locator("#undo").click(); idle()
         page.locator("#grid-step").select_option("1")
 
+        page.locator("#nodes-tab").click()
         page.locator('[data-element="trunk"]').click()
         drag('[data-node="trunk"]', 10, 5)
         c = command()
