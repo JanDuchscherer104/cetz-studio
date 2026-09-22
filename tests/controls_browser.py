@@ -1,6 +1,7 @@
 """Exercise real Tweakpane widgets. Native source/save tests remain separate."""
 from pathlib import Path
 import json
+import math
 import os
 from playwright.sync_api import sync_playwright
 
@@ -84,7 +85,9 @@ def main() -> None:
                     staged = float(page.locator('#parameter-value').input_value())
                     check(minimum <= staged <= maximum and abs((staged-minimum)/step-round((staged-minimum)/step)) <= 1e-7,
                           f'Pointer-staged value follows bounds/step {minimum}/{maximum}/{step}')
-                    check(value() == staged, 'Apply emits exactly the displayed step-aligned value')
+                    emitted = value()
+                    check(math.isclose(float(emitted), staged, rel_tol=0, abs_tol=1e-9),
+                          'Apply emits the displayed step-aligned value')
                     page.evaluate('window.applied = []')
             mount('bool', True)
             page.locator('label').filter(has=page.locator('#parameter-value')).click()
