@@ -1,7 +1,6 @@
 """Exercise real Tweakpane widgets. Native source/save tests remain separate."""
 from pathlib import Path
 import json
-import math
 import os
 from playwright.sync_api import sync_playwright
 
@@ -63,6 +62,7 @@ def main() -> None:
             enter('1.75')
             check(value() == 1.75, 'Step respects an aligned nonzero range origin')
             mount('number', 0.3, min=0, max=2, step=0.5)
+            check(value() == 0.3, 'Untouched off-grid source value is not snapped on Apply')
             enter('0.5')
             check(value() == 0.5, 'Widget does not shift the source step origin to the initial value')
             mount('length', 20, min=5, max=50, step=1, unit='mm')
@@ -86,8 +86,11 @@ def main() -> None:
                     check(minimum <= staged <= maximum and abs((staged-minimum)/step-round((staged-minimum)/step)) <= 1e-7,
                           f'Pointer-staged value follows bounds/step {minimum}/{maximum}/{step}')
                     emitted = value()
-                    check(math.isclose(float(emitted), staged, rel_tol=0, abs_tol=1e-9),
+                    check(emitted == staged,
                           'Apply emits the displayed step-aligned value')
+                    if fraction == 1.0:
+                        check(value() == staged,
+                              'Repeated endpoint Apply retains the displayed staged value')
                     page.evaluate('window.applied = []')
             mount('bool', True)
             page.locator('label').filter(has=page.locator('#parameter-value')).click()

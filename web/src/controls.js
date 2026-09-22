@@ -56,7 +56,11 @@ export function createParameterEditor(root, item, {disabled, preview, apply, ide
     if (flush) emitPreview();
     else timer = setTimeout(emitPreview, 200);
   };
-  binding.on('change', event => {
+  const stage = (value, flush = false) => {
+    // Tweakpane reports the committed pointer value on the event before the
+    // bound object is guaranteed to reflect it. Keep our staged model in lock
+    // step with the displayed widget so Apply cannot send an earlier value.
+    if (value !== undefined) values.value = value;
     changed = true;
     if (!transaction) transaction = `${current.id}:${++sequence}`;
     if ((current.kind === 'number' || current.kind === 'length') && current.step != null) {
@@ -69,10 +73,21 @@ export function createParameterEditor(root, item, {disabled, preview, apply, ide
       const aligned = Math.min(current.max ?? Infinity, Math.max(current.min ?? -Infinity, origin + tick * current.step));
       if (values.value !== aligned) { values.value = aligned; binding.refresh(); }
     }
-    schedulePreview(Boolean(event?.last));
-  });
+    schedulePreview(flush);
+  };
+  binding.on('change', event => stage(event?.value, Boolean(event?.last)));
   const input = binding.element.querySelector('input');
-  if (input) { input.id = 'parameter-value'; input.setAttribute('aria-label', options.label); }
+  if (input) {
+    input.id = 'parameter-value';
+    input.setAttribute('aria-label', options.label);
+    if (current.kind === 'number' || current.kind === 'length') {
+      input.addEventListener('input', () => {
+        const raw = input.value.trim();
+        const value = Number(raw);
+        if (raw && Number.isFinite(value)) stage(value);
+      });
+    }
+  }
   const button = pane.addButton({title: 'Apply control'});
   button.element.querySelector('button').id = 'apply-parameter';
   button.on('click', () => {
@@ -80,8 +95,6 @@ export function createParameterEditor(root, item, {disabled, preview, apply, ide
     // Merely opening/applying a picker must not normalize the saved literal.
     apply(!changed || same(values.value, current.value) ? current.value : values.value, transaction);
     cancelTimer();
-    changed = false;
-    transaction = null;
   });
   pane.disabled = disabled;
   const note = document.createElement('p');
@@ -101,6 +114,12 @@ export function createParameterEditor(root, item, {disabled, preview, apply, ide
         transaction = null;
         values.value = next.value;
         binding.refresh();
+      } else if (changed && same(values.value, next.value)) {
+        // A matching accepted snapshot acknowledges the staged value. Until
+        // then, retain it so repeated Apply cannot fall back to the original
+        // source value when Tweakpane emits no second change event.
+        changed = false;
+        transaction = null;
       } else if (!changed && !same(values.value, next.value)) {
         values.value = next.value;
         binding.refresh();
