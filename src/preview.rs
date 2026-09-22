@@ -28,6 +28,10 @@ pub struct BaseIdentity {
 pub struct Identity {
     #[serde(flatten)]
     pub base: BaseIdentity,
+    /// Per-page epoch established by the explicit browser reset handshake.
+    /// A browser reload starts a new epoch, so its generation counter may
+    /// safely begin again at one without admitting an older page's result.
+    pub client_id: String,
     pub request_generation: u64,
     pub candidate_hash: String,
 }
@@ -77,6 +81,7 @@ pub struct Status {
 pub struct Jobs {
     running: Option<Running>,
     pending: Option<Work>,
+    active_client_id: Option<String>,
     latest: Option<Identity>,
     completed: Option<Completed>,
     failure: Option<String>,
@@ -84,19 +89,47 @@ pub struct Jobs {
 }
 
 impl Jobs {
+    /// Start a new browser epoch. This is deliberately separate from preview
+    /// submission: an old page cannot take ownership again merely because one
+    /// of its delayed preview requests arrives after a reload.
+    pub fn reset(&mut self, client_id: String, current: &BaseIdentity) {
+        self.reap(current);
+        if self.active_client_id.as_deref() == Some(client_id.as_str()) {
+            return;
+        }
+        if let Some(running) = &self.running {
+            running.cancelled.store(true, Ordering::Relaxed);
+        }
+        self.pending = None;
+        self.active_client_id = Some(client_id);
+        self.latest = None;
+        self.completed = None;
+        self.failure = None;
+        self.cancelled = false;
+    }
+
     pub fn start(&mut self, work: Work, current: &BaseIdentity) -> Result<()> {
         self.reap(current);
+        ensure!(
+            work.identity.base == *current,
+            "Stale preview request; reload before previewing"
+        );
+        ensure!(
+            self.active_client_id.as_deref() == Some(work.identity.client_id.as_str()),
+            "Stale preview client; reload before previewing"
+        );
         if let Some(latest) = &self.latest {
             ensure!(
-                work.identity.base == *current
-                    && work.identity.request_generation >= latest.request_generation,
+                work.identity.request_generation >= latest.request_generation,
                 "Stale preview request; reload before previewing"
             );
-        } else {
-            ensure!(
-                work.identity.base == *current,
-                "Stale preview request; reload before previewing"
-            );
+            if work.identity.request_generation == latest.request_generation {
+                ensure!(
+                    work.identity == *latest,
+                    "Conflicting preview request uses an existing generation"
+                );
+                return Ok(());
+            }
         }
         if let Some(running) = &self.running {
             if running.identity != work.identity {
@@ -112,8 +145,12 @@ impl Jobs {
         Ok(())
     }
 
-    pub fn cancel(&mut self, current: &BaseIdentity) -> Result<()> {
+    pub fn cancel(&mut self, client_id: &str, current: &BaseIdentity) -> Result<()> {
         self.reap(current);
+        ensure!(
+            self.active_client_id.as_deref() == Some(client_id),
+            "Stale preview client; reload before cancelling"
+        );
         let latest = self.latest.as_ref().context("No preview to cancel")?;
         ensure!(latest.base == *current, "Stale preview cancellation");
         if let Some(running) = &self.running {
@@ -128,8 +165,13 @@ impl Jobs {
 
     pub fn status(&mut self, current: &BaseIdentity) -> Status {
         self.reap(current);
+        // Completion advances the one-slot queue only while it remains current.
+        // Cancellation/reset deliberately clear that slot before returning here.
+        let _ = self.start_pending();
         let identity = self.latest.clone();
-        let state = if self.cancelled {
+        let state = if self.latest.is_none() {
+            State::Idle
+        } else if self.cancelled {
             State::Cancelled
         } else if self.completed.is_some() {
             State::Current
@@ -173,6 +215,8 @@ impl Jobs {
                 running.cancelled.store(true, Ordering::Relaxed);
             }
             self.pending = None;
+            self.active_client_id = None;
+            self.latest = None;
             self.completed = None;
             self.failure = None;
             self.cancelled = true;
@@ -207,13 +251,13 @@ impl Jobs {
                 Err(error) => self.failure = Some(error),
             }
         }
-        // A cancelled obsolete worker may now yield the one pending latest
-        // candidate. If it was not cancelled, this is simply a no-op.
-        let _ = self.start_pending();
+        // Callers decide whether completion may advance the one-slot queue.
+        // In particular, cancellation and epoch reset clear pending work before
+        // returning, so they cannot accidentally launch it while reaping.
     }
 
     fn start_pending(&mut self) -> Result<()> {
-        if self.running.is_some() {
+        if self.running.is_some() || self.cancelled {
             return Ok(());
         }
         let Some(work) = self.pending.take() else {
@@ -223,10 +267,14 @@ impl Jobs {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = cancelled.clone();
         let (sender, receiver) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("cetz-preview".into())
             .spawn(move || {
                 let result = (|| -> Result<Completed> {
+                    ensure!(
+                        !worker_cancelled.load(Ordering::Relaxed),
+                        "Preview cancelled"
+                    );
                     let started = Instant::now();
                     let rendered = work.input.compiler.render_cancellable(
                         &work.input.path,
@@ -252,7 +300,11 @@ impl Jobs {
                 .map_err(|error| format!("{error:#}"));
                 let _ = sender.send(result);
             })
-            .context("Cannot start preview worker")?;
+            .context("Cannot start preview worker");
+        if let Err(error) = spawned {
+            self.failure = Some(format!("{error:#}"));
+            return Err(error);
+        }
         self.running = Some(Running {
             identity,
             cancelled,

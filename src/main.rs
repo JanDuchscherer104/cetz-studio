@@ -64,8 +64,25 @@ struct Revision {
 struct PreviewRequest {
     session_id: u64,
     revision: u64,
+    client_id: String,
     generation: u64,
     command: edit::Command,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviewResetRequest {
+    session_id: u64,
+    revision: u64,
+    client_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviewCancelRequest {
+    session_id: u64,
+    revision: u64,
+    client_id: String,
 }
 
 #[derive(Deserialize)]
@@ -411,6 +428,7 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
                     let base = state.preview_identity();
                     let identity = preview::Identity {
                         base: base.clone(),
+                        client_id: r.client_id,
                         request_generation: r.generation,
                         candidate_hash: cetz_studio::session::hash(input.source.as_bytes()),
                     };
@@ -418,12 +436,23 @@ fn route(request: &mut Request, state: &mut AppState, token: &str) -> Result<Val
                         .preview
                         .start(preview::Work { identity, input }, &base)?;
                 }
+                "/api/preview/reset" => {
+                    let r: PreviewResetRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
+                    state.session.check_revision(r.revision)?;
+                    ensure!(
+                        !r.client_id.is_empty() && r.client_id.len() <= 128,
+                        "Preview client identity must be 1–128 bytes"
+                    );
+                    let base = state.preview_identity();
+                    state.preview.reset(r.client_id, &base);
+                }
                 "/api/preview/cancel" => {
-                    let r: Revision = json_body(request)?;
-                    state.check_identity(r.session_id)?;
+                    let r: PreviewCancelRequest = json_body(request)?;
+                    state.check_identity(Some(r.session_id))?;
                     state.session.check_revision(r.revision)?;
                     let base = state.preview_identity();
-                    state.preview.cancel(&base)?;
+                    state.preview.cancel(&r.client_id, &base)?;
                 }
                 "/api/undo" | "/api/redo" => {
                     let r: Revision = json_body(request)?;

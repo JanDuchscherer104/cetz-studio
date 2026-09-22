@@ -108,7 +108,24 @@ mod unix {
         let token = state["token"].as_str().unwrap().to_string();
         let session_id = state["session_id"].as_u64().unwrap();
         let revision = state["snapshot"]["revision"].as_u64().unwrap();
-        let payload = json!({"session_id":session_id,"revision":revision,"generation":1,
+        let client_id = "preview-http-test";
+        let (reset, _) = request(
+            port,
+            "POST",
+            "/api/preview/reset",
+            Some(&token),
+            Some(json!({"session_id":session_id,"revision":revision,"client_id":client_id})),
+        );
+        assert_eq!(reset["preview"]["state"], "idle");
+        let (repeated_reset, _) = request(
+            port,
+            "POST",
+            "/api/preview/reset",
+            Some(&token),
+            Some(json!({"session_id":session_id,"revision":revision,"client_id":client_id})),
+        );
+        assert_eq!(repeated_reset["preview"]["state"], "idle");
+        let payload = json!({"session_id":session_id,"revision":revision,"client_id":client_id,"generation":1,
             "command":{"kind":"set_parameter","id":"width","value":3}});
         let (queued, queued_elapsed) =
             request(port, "POST", "/api/preview", Some(&token), Some(payload));
@@ -134,7 +151,7 @@ mod unix {
             "POST",
             "/api/preview/cancel",
             Some(&token),
-            Some(json!({"session_id":session_id,"revision":revision})),
+            Some(json!({"session_id":session_id,"revision":revision,"client_id":client_id})),
         );
         assert!(
             cancel_elapsed < Duration::from_millis(400),

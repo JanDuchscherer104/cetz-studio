@@ -10,7 +10,7 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc,
@@ -21,6 +21,19 @@ use tempfile::Builder;
 use wait_timeout::ChildExt;
 
 pub const MARKER_STROKE: f64 = 0.000_123_45;
+
+/// Stop and reap a compiler process before abandoning a cancelled or timed-out
+/// preview. `kill` reports `InvalidInput` when the process won the race and
+/// already exited; waiting still reaps that child.
+fn terminate_compiler(child: &mut Child) -> Result<()> {
+    if let Err(error) = child.kill() {
+        if error.kind() != std::io::ErrorKind::InvalidInput {
+            return Err(error).context("Cannot stop Typst compiler");
+        }
+    }
+    child.wait().context("Cannot reap Typst compiler")?;
+    Ok(())
+}
 
 #[derive(Clone, Debug)]
 pub struct Compiler {
@@ -242,6 +255,10 @@ impl Compiler {
         instrumented: bool,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Rendered> {
+        ensure!(
+            !cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)),
+            "Typst compilation cancelled; original source is unchanged"
+        );
         let parent = original
             .parent()
             .context("Figure has no parent directory")?;
@@ -310,14 +327,12 @@ impl Compiler {
         let started = Instant::now();
         let status = loop {
             if cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_compiler(&mut child)?;
                 bail!("Typst compilation cancelled; original source is unchanged");
             }
             let elapsed = started.elapsed();
             if elapsed >= self.timeout {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_compiler(&mut child)?;
                 bail!(
                     "Typst compilation exceeded {} seconds; original source is unchanged",
                     self.timeout.as_secs()
