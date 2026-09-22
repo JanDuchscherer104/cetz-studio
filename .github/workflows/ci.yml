@@ -32,6 +32,9 @@ jobs:
       - name: Build local frontend dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:web
 
+      - name: Build synthetic browser fixture
+        run: python scripts/build_ui_preview.py
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
