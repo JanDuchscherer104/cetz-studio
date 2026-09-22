@@ -11,7 +11,7 @@
     locked:new Set(), drag:null, space:false, first:true, page:0, mountedSvg:null,
     mountedGestures:false, mappingError:'', fixture:!!window.CETZ_STUDIO_FIXTURE,
     project:null, sessionId:null, copiedNode:null, pendingProjectAction:null, modalTrigger:null,
-    panel:null, panelTrigger:null, fidelityLosses:[], previewVisible:false, previewReady:false,
+    panel:null, panelTrigger:null, fidelityLosses:[], previewVisible:false, previewReady:false, focusedParameter:null,
     clientId,
     preview:{generation:0,state:'idle',identity:null,diagnostics:null,pages:null,svg:null,timer:null,poll:null}};
   const textPreviews=new Set();
@@ -417,6 +417,7 @@
   function select(kind,id){
     disposeTextPreviews();
     cancelPreview();
+    if(kind!=='parameter'||id!==app.focusedParameter)app.focusedParameter=null;
     app.selection={kind,id};routing?.selectionChanged();renderList();renderInspector();drawOverlay();
   }
   function startDrag(e,kind,payload){
@@ -543,6 +544,7 @@
       preview:(value,transaction)=>preview({kind:'set_parameter',id:item.id,value},transaction),
       apply:async(value)=>{await cancelPreview();return post('/api/edit',{command:{kind:'set_parameter',id:item.id,value}});},
     });
+    root.querySelector('#parameter-value')?.addEventListener('focus',()=>{app.focusedParameter=item.id;});
     root.append(html('p','field-note','Only this declaration’s literal changes. Typst recomputes every drawing that uses it; equations and generated source are preserved.'));
   }
   function renderTextFields(root,item,kind){
@@ -560,7 +562,6 @@
       source.addEventListener('input',()=>scheduleTextPreview(
         ()=>kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:source.value}:{kind:'set_edge_source',edge:item.id,field:field.id,source:source.value},
         source.value,sourcePreview.transaction,sourcePreview));
-      source.addEventListener('change',()=>{if(sourcePreview.sessionId===app.sessionId&&sourcePreview.revision===app.snapshot?.revision&&app.selection?.kind===kind&&app.selection?.id===item.id&&tentativeTextIsValid(source.value))preview(kind==='node'?{kind:'set_node_source',id:item.id,field:field.id,source:source.value}:{kind:'set_edge_source',edge:item.id,field:field.id,source:source.value},sourcePreview.transaction);});
       applySource.id=`apply-${kind}-${field.id}-source`;applySource.disabled=source.disabled;
       applySource.onclick=async()=>{
         clearTimeout(sourcePreview.timer);sourcePreview.timer=null;
@@ -589,7 +590,11 @@
     if(sel?.kind==='parameter'){
       const item=parameters().find(p=>p.id===sel.id);
       if(item){
-        if(parameterEditor?.matches(item.id)){parameterEditor.update(item,app.busy||!app.snapshot.preview_current,{sessionId:app.sessionId,objectId:item.id});return;}
+        if(parameterEditor?.matches(item.id)){
+          parameterEditor.update(item,app.busy||!app.snapshot.preview_current,{sessionId:app.sessionId,objectId:item.id});
+          if(app.focusedParameter===item.id&&!app.busy)queueMicrotask(()=>root.querySelector('#parameter-value')?.focus());
+          return;
+        }
         parameterEditor?.dispose();parameterEditor=null;root.replaceChildren();renderParameter(root,item);return;
       }
       app.selection=null;
